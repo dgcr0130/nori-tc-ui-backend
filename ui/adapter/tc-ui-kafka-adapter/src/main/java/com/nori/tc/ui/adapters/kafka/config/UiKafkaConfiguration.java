@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -39,7 +40,7 @@ import java.util.Map;
  * WARN + 메트릭 + ACK로 직접 종결합니다.</p>
  */
 @Configuration
-@EnableConfigurationProperties({UiKafkaTopicProperties.class, UiKafkaPublishProperties.class})
+@EnableConfigurationProperties({UiKafkaTopicProperties.class, UiKafkaPublishProperties.class, KafkaProperties.class})
 public class UiKafkaConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(UiKafkaConfiguration.class);
@@ -59,13 +60,15 @@ public class UiKafkaConfiguration {
      * </ul>
      *
      * @param bootstrapServers Kafka 브로커 주소 (spring.kafka.bootstrap-servers)
+     * @param kafkaProperties Spring Boot 공통 Kafka 보안 설정
      * @return MANUAL_IMMEDIATE ACK 모드의 ConcurrentKafkaListenerContainerFactory
      */
     @Bean("uiCommandListenerContainerFactory")
     public ConcurrentKafkaListenerContainerFactory<String, String> uiCommandListenerContainerFactory(
-            @Value("${spring.kafka.bootstrap-servers}") final String bootstrapServers
+            @Value("${spring.kafka.bootstrap-servers}") final String bootstrapServers,
+            final KafkaProperties kafkaProperties
     ) {
-        final Map<String, Object> consumerProps = buildCommandsConsumerProperties(bootstrapServers);
+        final Map<String, Object> consumerProps = buildCommandsConsumerProperties(bootstrapServers, kafkaProperties);
         final DefaultKafkaConsumerFactory<String, String> consumerFactory =
                 new DefaultKafkaConsumerFactory<>(consumerProps);
 
@@ -104,10 +107,16 @@ public class UiKafkaConfiguration {
      * 최종 역직렬화/검증/오류정책은 UiCommandKafkaSubscriber에서 수행합니다.</p>
      *
      * @param bootstrapServers Kafka 브로커 주소
+     * @param kafkaProperties Spring Boot 공통 Kafka 보안 설정
      * @return Consumer 설정 프로퍼티 맵
      */
-    private static Map<String, Object> buildCommandsConsumerProperties(final String bootstrapServers) {
-        final Map<String, Object> props = new HashMap<>();
+    private static Map<String, Object> buildCommandsConsumerProperties(
+            final String bootstrapServers, final KafkaProperties kafkaProperties) {
+        // 소비자 group/offset 기본값을 가져오지 않고 Boot의 공통 SSL Resource 변환만 재사용합니다.
+        final Map<String, Object> props = new HashMap<>(kafkaProperties.getSsl().buildProperties());
+        props.putAll(kafkaProperties.getSecurity().buildProperties());
+        props.putAll(kafkaProperties.getProperties());
+        props.putAll(kafkaProperties.getConsumer().getProperties());
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);

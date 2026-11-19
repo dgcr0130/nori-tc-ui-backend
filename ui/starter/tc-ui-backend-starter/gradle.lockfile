@@ -113,6 +113,7 @@ org.springframework.boot:spring-boot-dependencies:4.0.7=compileClasspath,runtime
 org.springframework.boot:spring-boot-health:4.0.7=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-http-converter:4.0.7=runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-jackson:4.0.7=runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.springframework.boot:spring-boot-kafka:4.0.7=runtimeClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-micrometer-metrics:4.0.7=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-micrometer-observation:4.0.7=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
 org.springframework.boot:spring-boot-netty:4.0.7=runtimeClasspath,testRuntimeClasspath
