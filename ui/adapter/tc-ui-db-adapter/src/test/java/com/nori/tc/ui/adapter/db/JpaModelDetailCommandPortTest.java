@@ -35,6 +35,9 @@ import com.nori.tc.ui.core.port.db.ModelDetailCommandPort;
 import com.nori.tc.ui.domain.model.UiModelMdf;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
@@ -536,6 +539,66 @@ class JpaModelDetailCommandPortTest {
         assertEquals("TEMP", captor.getValue().variableName());
         assertEquals(PlcDataType.INT16, captor.getValue().dataType());
         assertEquals(0.1, captor.getValue().scale(), 0.0);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"BIG_ENDIAN", "LITTLE_ENDIAN", " big_endian ", " little_endian ", "LiTtLe_EnDiAn"})
+    void replacePlcRegisters_normalizesOrders(final String order) {
+        final Fixture fixture = plcRegisterFixture();
+        fixture.port.saveDetailRows(101L, "plc-register", List.of(plcRegisterRow("TEMP", order, order)));
+
+        final ArgumentCaptor<UpsertTcModelPlcRegister> captor = ArgumentCaptor.forClass(UpsertTcModelPlcRegister.class);
+        verify(fixture.modelPlcRegisterStore).upsert(captor.capture());
+        final String expected = order.trim().toUpperCase(java.util.Locale.ROOT);
+        assertEquals(expected, captor.getValue().byteOrder());
+        assertEquals(expected, captor.getValue().wordOrder());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void replacePlcRegisters_blankOrdersRemainNull(final String order) {
+        final Fixture fixture = plcRegisterFixture();
+        fixture.port.saveDetailRows(101L, "plc-register", List.of(plcRegisterRow("TEMP", order, order)));
+
+        final ArgumentCaptor<UpsertTcModelPlcRegister> captor = ArgumentCaptor.forClass(UpsertTcModelPlcRegister.class);
+        verify(fixture.modelPlcRegisterStore).upsert(captor.capture());
+        assertNull(captor.getValue().byteOrder());
+        assertNull(captor.getValue().wordOrder());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LE", "BIG-ENDIAN", "LITTLE_ENDIAN_EXTRA"})
+    void replacePlcRegisters_invalidOrderRejectsWholeRequest(final String order) {
+        for (final int column : List.of(7, 8)) {
+            final Fixture fixture = plcRegisterFixture();
+            final UiBadRequestException exception = assertThrows(UiBadRequestException.class,
+                    () -> fixture.port.saveDetailRows(101L, "plc-register", List.of(
+                            plcRegisterRow("VALID", "BIG_ENDIAN", "LITTLE_ENDIAN"),
+                            plcRegisterRow("INVALID", column == 7 ? order : null, column == 8 ? order : null))));
+            assertTrue(exception.getMessage().contains("2행"));
+            assertTrue(exception.getMessage().contains(column == 7 ? "byteOrder" : "wordOrder"));
+            assertTrue(exception.getMessage().contains(order));
+            assertTrue(exception.getMessage().contains("101"));
+            assertTrue(exception.getMessage().contains("STATUS_REPORT"));
+            verify(fixture.modelPlcRegisterStore, never()).deleteAllByGroupKey(anyLong());
+            verify(fixture.modelPlcRegisterStore, never()).upsert(any());
+        }
+    }
+
+    private static Fixture plcRegisterFixture() {
+        final Fixture fixture = new Fixture();
+        when(fixture.modelStore.findByModelVersionKey(101L)).thenReturn(Optional.of(model(101L)));
+        when(fixture.modelPlcGroupStore.findAllByModelVersionKey(101L))
+                .thenReturn(List.of(plcGroup(7L, 101L, "STATUS_REPORT")));
+        return fixture;
+    }
+
+    private static ModelDetailCommandPort.DetailRowCommand plcRegisterRow(
+            final String variable, final String byteOrder, final String wordOrder) {
+        return new ModelDetailCommandPort.DetailRowCommand(null, Arrays.asList(
+                "STATUS_REPORT", "0", variable, "INT16", null, null, null, byteOrder, wordOrder,
+                null, null, null, null));
     }
 
     private static TcModelPlcGroup plcGroup(final long groupKey, final long modelVersionKey, final String messageName) {

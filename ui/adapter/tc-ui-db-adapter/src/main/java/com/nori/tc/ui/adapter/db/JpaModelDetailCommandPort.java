@@ -474,7 +474,9 @@ public class JpaModelDetailCommandPort implements ModelDetailCommandPort {
         // 그룹별 검증용 도메인 목록과 upsert 입력을 함께 만든다(검증 통과 후에만 영속).
         final Map<Long, List<TcModelPlcRegister>> registersByGroupKey = new LinkedHashMap<>();
         final List<UpsertTcModelPlcRegister> upserts = new ArrayList<>();
+        int rowNumber = 0;
         for (final DetailRowCommand row : rows) {
+            rowNumber++;
             final String groupMessageName = requiredCell(row, 0, "group");
             final TcModelPlcGroup group = groupsByName.get(groupMessageName);
             if (group == null) {
@@ -489,8 +491,10 @@ public class JpaModelDetailCommandPort implements ModelDetailCommandPort {
             final Integer length = parseOptionalInteger(optionalCell(row, 4), "length");
             final Integer bitIndex = parseOptionalInteger(optionalCell(row, 5), "bitIndex");
             final Integer byteIndex = parseOptionalInteger(optionalCell(row, 6), "byteIndex");
-            final String byteOrder = optionalCell(row, 7);
-            final String wordOrder = optionalCell(row, 8);
+            final String orderContext = "modelVersionKey=" + modelVersionKey + ", " + rowNumber
+                    + "행, group=" + groupMessageName + ", variableName=" + variableName;
+            final String byteOrder = PlcRegisterOrder.normalizeOptional(cell(row, 7), orderContext + ", byteOrder(8열)");
+            final String wordOrder = PlcRegisterOrder.normalizeOptional(cell(row, 8), orderContext + ", wordOrder(9열)");
             final Double scale = parseOptionalDouble(optionalCell(row, 9), "scale");
             final Boolean bcdSigned = parseOptionalBoolean(optionalCell(row, 10), "bcdSigned");
             final String charEncoding = optionalCell(row, 11);

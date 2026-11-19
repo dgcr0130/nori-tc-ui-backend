@@ -438,6 +438,33 @@ class JpaModelManagementPortTest {
     }
 
     @Test
+    @DisplayName("branch checkin은 기존 PLC 순서값의 공백·대소문자·목록 밖 값을 그대로 복제합니다")
+    void checkinPreservesStoredPlcRegisterOrders() {
+        final Fixture fixture = new Fixture();
+        final TcModel branchEdit = model(3402L, 7401L, "PLC_feature_tester", "PLC", "EDIT", ProtocolType.PLC, ModelStatus.DEVELOP);
+        final TcModel checkedIn = model(3403L, 7401L, "PLC_feature_tester", "PLC", dailyVersion(FIXED_VERSION_DATE, 1), ProtocolType.PLC, ModelStatus.DEVELOP);
+        fixture.allModels.add(branchEdit);
+        fixture.plcGroupsByVersion.put(3402L, List.of(plcGroup(10L, 3402L, "POLL_A")));
+        final List<String> orders = List.of(" little_endian ", "INVALID_ORDER");
+        fixture.plcRegistersByGroupKey.put(10L, List.of(
+                new TcModelPlcRegister(101L, 10L, 0, "TEMP", PlcDataType.UINT16,
+                        null, null, null, orders.get(0), orders.get(1), null, null, null, null, null),
+                new TcModelPlcRegister(102L, 10L, 1, "STATUS", PlcDataType.UINT16,
+                        null, null, null, orders.get(1), orders.get(0), null, null, null, null, null)));
+        when(fixture.modelStore.upsert(any())).thenReturn(checkedIn);
+        when(fixture.modelPlcGroupStore.upsert(any())).thenReturn(plcGroup(1010L, 3403L, "POLL_A"));
+        final var command = new ModelBranchCommandPort.CheckinBranchEditVersionCommand(3402L, "checked in", "SYSTEM");
+
+        fixture.port.checkinBranchEditVersion(command);
+        final var captor = ArgumentCaptor.forClass(UpsertTcModelPlcRegister.class);
+        verify(fixture.modelPlcRegisterStore, times(2)).upsert(captor.capture());
+        assertEquals(orders.get(0), captor.getAllValues().get(0).byteOrder());
+        assertEquals(orders.get(1), captor.getAllValues().get(0).wordOrder());
+        assertEquals(orders.get(1), captor.getAllValues().get(1).byteOrder());
+        assertEquals(orders.get(0), captor.getAllValues().get(1).wordOrder());
+    }
+
+    @Test
     @DisplayName("parent commit preview는 plc-group/plc-register diff 섹션을 포함하고 register identity가 그룹별로 충돌하지 않습니다")
     void previewIncludesPlcSectionsWithoutRegisterCollision() {
         final Fixture fixture = new Fixture();
