@@ -1,5 +1,6 @@
 package com.nori.tc.ui.starter;
 
+import com.nori.tc.ui.core.ai.TcAiReadService;
 import com.nori.tc.ui.core.auth.UiAuthMetrics;
 import com.nori.tc.ui.core.auth.UiTokenRecheckWindowCache;
 import com.nori.tc.ui.core.service.DeployRegisterQueryService;
@@ -18,6 +19,7 @@ import org.springframework.context.annotation.Import;
  */
 @Configuration(proxyBeanMethods = false)
 @Import({
+        TcAiReadService.class,
         UiAuthMetrics.class,
         UiTokenRecheckWindowCache.class,
         DeployRegisterQueryService.class,

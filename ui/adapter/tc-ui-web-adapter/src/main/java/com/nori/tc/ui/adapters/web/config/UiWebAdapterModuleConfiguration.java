@@ -1,5 +1,7 @@
 package com.nori.tc.ui.adapters.web.config;
 
+import com.nori.tc.ui.adapters.web.ai.TcAiIdentityResolver;
+import com.nori.tc.ui.adapters.web.ai.TcAiToolConfiguration;
 import com.nori.tc.ui.adapters.web.application.admin.GroupAdminAssembler;
 import com.nori.tc.ui.adapters.web.application.admin.GroupAdminFacade;
 import com.nori.tc.ui.adapters.web.application.admin.PermissionAdminAssembler;
@@ -45,6 +47,8 @@ import org.springframework.context.annotation.Import;
  */
 @Configuration(proxyBeanMethods = false)
 @Import({
+        TcAiIdentityResolver.class,
+        TcAiToolConfiguration.class,
         UiSimulatorConfiguration.class,
         UiSecurityPolicyConfiguration.class,
         OpenApiInfoConfig.class,

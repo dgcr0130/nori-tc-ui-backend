@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Import;
  */
 @Configuration(proxyBeanMethods = false)
 @Import({
+        TcAiDbReadAdapter.class,
         DeployJdbcStorePort.class,
         JdbcAuditLogPort.class,
         JdbcPasswordHistoryPort.class,
