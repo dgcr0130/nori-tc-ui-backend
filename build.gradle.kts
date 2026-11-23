@@ -26,5 +26,10 @@ allprojects {
 subprojects {
     pluginManager.withPlugin("java") {
         pluginManager.apply("com.nori.tc.jacoco-conventions")
+
+        // Mockito inline 은 dispatcher 를 bootstrap 에 주입하므로 시험 JVM 의 CDS 를 사용하지 않는다.
+        tasks.withType<Test>().configureEach {
+            jvmArgs("-Xshare:off")
+        }
     }
 }

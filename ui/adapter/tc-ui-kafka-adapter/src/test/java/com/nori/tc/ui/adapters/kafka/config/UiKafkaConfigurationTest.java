@@ -62,14 +62,20 @@ class UiKafkaConfigurationTest {
     @Test
     void securityProtocolBindingAndConsumerMapPrecedenceArePreserved() {
         runner.withPropertyValues("spring.kafka.security.protocol=SASL_SSL")
-                .run(context -> assertSecurity(context.getBean("uiCommandListenerContainerFactory",
-                        ConcurrentKafkaListenerContainerFactory.class).getConsumerFactory().getConfigurationProperties(), "SASL_SSL"));
+                .run(context -> {
+                    final ConcurrentKafkaListenerContainerFactory<?, ?> factory =
+                            context.getBean("uiCommandListenerContainerFactory", ConcurrentKafkaListenerContainerFactory.class);
+                    assertSecurity(factory.getConsumerFactory().getConfigurationProperties(), "SASL_SSL");
+                });
         runner.withPropertyValues(
                         "spring.kafka.security.protocol=SSL",
                         "spring.kafka.properties.security.protocol=SASL_SSL",
                         "spring.kafka.consumer.properties.security.protocol=SASL_PLAINTEXT")
-                .run(context -> assertSecurity(context.getBean("uiCommandListenerContainerFactory",
-                        ConcurrentKafkaListenerContainerFactory.class).getConsumerFactory().getConfigurationProperties(), "SASL_PLAINTEXT"));
+                .run(context -> {
+                    final ConcurrentKafkaListenerContainerFactory<?, ?> factory =
+                            context.getBean("uiCommandListenerContainerFactory", ConcurrentKafkaListenerContainerFactory.class);
+                    assertSecurity(factory.getConsumerFactory().getConfigurationProperties(), "SASL_PLAINTEXT");
+                });
     }
 
     private static void assertSecurity(final Map<String, Object> props, final String protocol) throws IOException {

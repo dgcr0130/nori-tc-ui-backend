@@ -4,6 +4,7 @@ import com.nori.tc.db.domain.redis.dlq.RedisBusinessDlqEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -14,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -74,7 +74,7 @@ class BusinessDlqRedisServiceSerializationModeTest {
         raw.put("tags", Map.of("k", "v"));
         raw.put("ttlSeconds", 3_600L);
 
-        doReturn(List.of(KEY)).when(businessRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of(KEY)).when(businessRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
         when(valueOps.get(KEY)).thenReturn(raw);
 
         final List<RedisBusinessDlqEntry> entries = service.listAllDlq();
@@ -98,7 +98,7 @@ class BusinessDlqRedisServiceSerializationModeTest {
                 "EQP_END", "end", "trace-2", null, Map.of(), null
         );
 
-        doReturn(List.of(KEY)).when(businessRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of(KEY)).when(businessRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
         when(valueOps.get(KEY)).thenReturn(entry);
 
         final List<RedisBusinessDlqEntry> entries = service.listAllDlq();

@@ -3,6 +3,7 @@ package com.nori.tc.ui.adapters.redis.dlq;
 import com.nori.tc.db.domain.redis.quarantine.RedisQuarantineEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -12,7 +13,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -59,7 +59,7 @@ class GatewayDlqRedisServiceQuarantineTest {
                 quarantinedAt,
                 3600L
         );
-        doReturn(List.of(KEY_EQP_Q_01)).when(gatewayRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of(KEY_EQP_Q_01)).when(gatewayRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
         when(valueOps.get(KEY_EQP_Q_01)).thenReturn(entry);
 
         final List<RedisQuarantineEntry> entries = service.listAllQuarantine();
@@ -75,7 +75,7 @@ class GatewayDlqRedisServiceQuarantineTest {
 
     @Test
     void listAllQuarantine_returnsEmptyListWhenNoKeys() {
-        doReturn(List.of()).when(gatewayRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of()).when(gatewayRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
 
         final List<RedisQuarantineEntry> entries = service.listAllQuarantine();
 

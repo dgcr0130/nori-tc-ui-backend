@@ -5,6 +5,7 @@ import com.nori.tc.db.domain.redis.quarantine.RedisQuarantineEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -15,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -73,7 +73,7 @@ class GatewayDlqRedisServiceSerializationModeTest {
         raw.put("rawLen", 128L);
         raw.put("b64Len", 172L);
         raw.put("ttlSeconds", 3600L);
-        doReturn(List.of(DLQ_KEY)).when(gatewayRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of(DLQ_KEY)).when(gatewayRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
         when(valueOps.get(DLQ_KEY)).thenReturn(raw);
 
         final List<RedisDlqEntry> entries = service.listAllDlq();
@@ -93,7 +93,7 @@ class GatewayDlqRedisServiceSerializationModeTest {
         raw.put("reasonMessage", "외부 통신 장애 누적");
         raw.put("quarantinedAt", "2026-05-13T01:23:45Z");
         raw.put("ttlSeconds", 3600L);
-        doReturn(List.of(QUARANTINE_KEY)).when(gatewayRedisTemplate).execute(any(RedisCallback.class));
+        doReturn(List.of(QUARANTINE_KEY)).when(gatewayRedisTemplate).execute(ArgumentMatchers.<RedisCallback<List<String>>>any());
         when(valueOps.get(QUARANTINE_KEY)).thenReturn(raw);
 
         final List<RedisQuarantineEntry> entries = service.listAllQuarantine();

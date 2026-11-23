@@ -7,6 +7,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,7 +19,8 @@ class BusinessAppAssignmentKafkaAdapterTest {
     private static final String UI_TOPIC = "tc.ui.events.business";
 
     private static MemberDescription member(final String memberId, final String host, final TopicPartition... partitions) {
-        return new MemberDescription(memberId, "client-" + memberId, host, new MemberAssignment(Set.of(partitions)));
+        return new MemberDescription(memberId, Optional.empty(), "client-" + memberId, host,
+                new MemberAssignment(Set.of(partitions)), Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     @Test
