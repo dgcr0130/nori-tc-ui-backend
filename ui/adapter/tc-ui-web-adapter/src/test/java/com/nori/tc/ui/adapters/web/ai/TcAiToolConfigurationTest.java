@@ -34,7 +34,7 @@ class TcAiToolConfigurationTest {
     private static final OffsetDateTime TIME = OffsetDateTime.parse("2026-11-23T10:00+09:00");
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private final TcAiReadPort port = mock(TcAiReadPort.class);
-    private final TcAiToolConfiguration configuration = new TcAiToolConfiguration(new TcAiReadService(port));
+    private final TcAiToolConfiguration configuration = new TcAiToolConfiguration(new TcAiReadService(port, mock(TcAiReadPort.RedisReads.class)));
 
     @Test
     void snapshotHasEveryFieldWithNativeJsonTypesNullsAndNoNestedLimit() {
@@ -254,7 +254,7 @@ class TcAiToolConfigurationTest {
     }
 
     @Test
-    void explicitWebImportsAndConditionalGraphHaveOneResolverAndTwoRegistrations() {
+    void explicitWebImportsAndConditionalGraphHaveOneResolverAndFourRegistrations() {
         assertThat(UiWebAdapterModuleConfiguration.class.getAnnotation(Import.class).value())
                 .contains(TcAiIdentityResolver.class, TcAiToolConfiguration.class);
         var runner = new ApplicationContextRunner().withUserConfiguration(TcAiIdentityResolver.class,
@@ -263,6 +263,7 @@ class TcAiToolConfigurationTest {
                 .doesNotHaveBean(AiRequestIdentityResolver.class).doesNotHaveBean(AiToolRegistration.class));
         runner.withPropertyValues("nori.ai.integration.enabled=true")
                 .withBean(TcAiReadPort.class, () -> port)
+                .withBean(TcAiReadPort.RedisReads.class, () -> mock(TcAiReadPort.RedisReads.class))
                 .withBean(SessionPort.class, () -> mock(SessionPort.class))
                 .withBean(UserPort.class, () -> mock(UserPort.class))
                 .withBean(PermissionPort.class, () -> mock(PermissionPort.class))
@@ -270,7 +271,7 @@ class TcAiToolConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(AiRequestIdentityResolver.class);
                     assertThat(context.getBeansOfType(AiToolRegistration.class).values().stream().map(AiToolRegistration::toolId))
-                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.model.read");
+                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
                 });
     }
 

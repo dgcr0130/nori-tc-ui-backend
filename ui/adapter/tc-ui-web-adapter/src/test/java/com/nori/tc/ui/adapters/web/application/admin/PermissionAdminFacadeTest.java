@@ -12,6 +12,8 @@ import com.nori.tc.ui.domain.useradmin.UiUserGroup;
 import com.nori.tc.ui.domain.useradmin.UiUserGroupPermission;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mock;
@@ -44,6 +46,43 @@ class PermissionAdminFacadeTest {
     private GroupPermissionMappingPort groupPermissionMappingPort;
 
     private final PermissionAdminAssembler assembler = new PermissionAdminAssembler();
+
+    @ParameterizedTest
+    @CsvSource({"AI_DOC_READ,AI 문서 조회", "AI_ADMIN_DOC_READ,AI 관리 문서 조회", "AI_LOG_READ,AI 로그 조회",
+            "AI_TRACE_READ,AI 트레이스 조회", "AI_REVIEW,AI 답변 검토"})
+    void aiPermissionMetadataUsesExistingCreatePathAndExistingRowsCanBeReadWithoutWriting(String code, String name) {
+        var facade = new PermissionAdminFacade(permissionCrudPort, groupCrudPort, groupPermissionMappingPort, assembler);
+        var now = OffsetDateTime.now();
+        var saved = new UiPermission(PERMISSION_ID, code, name, UiPermissionResourceType.API, UiPermissionMatchType.EXACT,
+                "/api/ai/permission-codes/" + code, "GET", name, true, now, now, "SYSTEM", "SYSTEM");
+        when(permissionCrudPort.findByPermId(PERMISSION_ID)).thenReturn(Optional.of(saved));
+        assertEquals(PERMISSION_ID, facade.findByPermId(PERMISSION_ID).orElseThrow().permId());
+        verify(permissionCrudPort, never()).upsert(any());
+        when(permissionCrudPort.upsert(any())).thenReturn(saved);
+        when(groupCrudPort.findByGroupCode("ADMIN")).thenReturn(Optional.empty());
+        var request = new PermissionUpsertRequest(code, name, UiPermissionResourceType.API, UiPermissionMatchType.EXACT,
+                "/api/ai/permission-codes/" + code, "GET", name, true, "SYSTEM", "SYSTEM");
+        assertEquals(PERMISSION_ID, facade.create(request).permId());
+        verify(permissionCrudPort).upsert(argThat(command -> command.permId() == null && code.equals(command.permCode())
+                && name.equals(command.permName()) && command.resourceType() == UiPermissionResourceType.API
+                && command.matchType() == UiPermissionMatchType.EXACT && command.isActive()
+                && ("/api/ai/permission-codes/" + code).equals(command.resource()) && "GET".equals(command.httpMethod())));
+        verify(groupPermissionMappingPort, never()).upsert(any());
+    }
+
+    @Test
+    void aiReviewCreationAlsoUsesTheExistingAdminAutoGrantPolicy() {
+        var facade = new PermissionAdminFacade(permissionCrudPort, groupCrudPort, groupPermissionMappingPort, assembler);
+        var now = OffsetDateTime.now();
+        var saved = new UiPermission(PERMISSION_ID, "AI_REVIEW", "AI 답변 검토", UiPermissionResourceType.API,
+                UiPermissionMatchType.EXACT, "/api/ai/permission-codes/AI_REVIEW", "GET", null, true, now, now, "SYSTEM", "SYSTEM");
+        when(permissionCrudPort.upsert(any())).thenReturn(saved);
+        when(groupCrudPort.findByGroupCode("ADMIN")).thenReturn(Optional.of(adminGroup()));
+        when(groupPermissionMappingPort.upsert(any())).thenReturn(mapping("SYSTEM"));
+        facade.create(new PermissionUpsertRequest("AI_REVIEW", "AI 답변 검토", UiPermissionResourceType.API,
+                UiPermissionMatchType.EXACT, "/api/ai/permission-codes/AI_REVIEW", "GET", null, true, "SYSTEM", "SYSTEM"));
+        verify(groupPermissionMappingPort).upsert(argThat(matchesAdminMapping(PERMISSION_ID, "SYSTEM")));
+    }
 
     @Test
     @DisplayName("권한 생성 시 ADMIN 그룹에 권한 매핑을 자동 부여합니다.")

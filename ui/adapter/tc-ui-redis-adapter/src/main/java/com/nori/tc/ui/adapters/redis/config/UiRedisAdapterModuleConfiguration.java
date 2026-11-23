@@ -1,6 +1,7 @@
 package com.nori.tc.ui.adapters.redis.config;
 
 import com.nori.tc.ui.adapters.redis.async.AsyncResultStoreService;
+import com.nori.tc.ui.adapters.redis.ai.TcAiRedisReadAdapter;
 import com.nori.tc.ui.adapters.redis.comm.CommLogRedisQueryAdapter;
 import com.nori.tc.ui.adapters.redis.coordination.DeployExecutionRedisAdapter;
 import com.nori.tc.ui.adapters.redis.dlq.BusinessDlqRedisService;
@@ -18,6 +19,7 @@ import org.springframework.context.annotation.Import;
 @Configuration(proxyBeanMethods = false)
 @Import({
         UiRedisConfiguration.class,
+        TcAiRedisReadAdapter.class,
         AsyncResultStoreService.class,
         CommLogRedisQueryAdapter.class,
         // DeployExecutionRedisAdapter 는 여기서 등록하지 않는다 — 스테레오타입이 아니고 협력자

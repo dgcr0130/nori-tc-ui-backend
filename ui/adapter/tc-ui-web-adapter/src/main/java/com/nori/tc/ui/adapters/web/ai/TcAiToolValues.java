@@ -9,8 +9,13 @@ import com.nori.tc.ui.domain.model.UiModelSocketMessage;
 import com.nori.tc.ui.domain.model.UiModelMesMessage;
 import com.nori.tc.ui.core.ai.TcAiReadPort.Lot;
 import com.nori.tc.ui.core.ai.TcAiReadPort.Work;
+import com.nori.tc.ui.core.ai.TcAiRedisFacts.BusinessEntry;
+import com.nori.tc.ui.core.ai.TcAiRedisFacts.CommLogFact;
+import com.nori.tc.ui.core.ai.TcAiRedisFacts.DlqFact;
+import com.nori.tc.ui.core.ai.TcAiRedisFacts.GatewayEntry;
 import com.nori.tc.ui.core.ai.TcAiReadService.OperationalSnapshot;
 import com.nori.tc.ui.core.port.db.EqpQueryPort.EqpRuntimeStateView;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -26,6 +31,69 @@ final class TcAiToolValues {
     static AiToolItem item(final String ref, final Map<String, Object> values) {
         // DB 항목은 발생 시각순 자료가 아니므로 절삭용 누락 시간 구간을 만들지 않습니다.
         return new AiToolItem(ref, JSON.writeValueAsString(values), values, null);
+    }
+
+    static AiToolItem timedItem(String ref, Map<String, Object> values, Instant time) {
+        return new AiToolItem(ref, JSON.writeValueAsString(values), values, time);
+    }
+
+    static Map<String, Object> dlq(DlqFact fact) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("source", fact.source().value());
+        values.put("entry", switch (fact.entry()) {
+            case GatewayEntry entry -> gateway(entry);
+            case BusinessEntry entry -> business(entry);
+        });
+        return values;
+    }
+
+    static Map<String, Object> commLog(CommLogFact fact) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("source", fact.source().value());
+        values.put("occurredAt", DateTimeFormatter.ISO_INSTANT.format(fact.time()));
+        values.put("direction", fact.direction());
+        values.put("messageName", fact.messageName());
+        return values;
+    }
+
+    private static Map<String, Object> gateway(GatewayEntry e) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("dlqId", e.dlqId());
+        values.put("equipmentId", e.equipmentId());
+        values.put("traceId", e.traceId());
+        values.put("commInterfaceType", e.commInterfaceType());
+        values.put("socketType", e.socketType());
+        values.put("stage", e.stage());
+        values.put("reasonCode", e.reasonCode());
+        values.put("reasonMessage", e.reasonMessage());
+        values.put("occurredAt", e.occurredAt());
+        values.put("payloadRefKey", e.payloadRefKey());
+        values.put("rawLen", e.rawLen());
+        values.put("b64Len", e.b64Len());
+        values.put("tags", e.tags());
+        values.put("ttlSeconds", e.ttlSeconds());
+        return values;
+    }
+
+    private static Map<String, Object> business(BusinessEntry e) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("dlqId", e.dlqId());
+        values.put("source", e.source());
+        values.put("stage", e.stage());
+        values.put("reasonCode", e.reasonCode());
+        values.put("reasonMessage", e.reasonMessage());
+        values.put("occurredAt", e.occurredAt());
+        values.put("topic", e.topic());
+        values.put("partition", e.partition());
+        values.put("offset", e.offset());
+        values.put("eqpId", e.eqpId());
+        values.put("messageType", e.messageType());
+        values.put("messageName", e.messageName());
+        values.put("traceId", e.traceId());
+        values.put("payloadRef", e.payloadRef());
+        values.put("tags", e.tags());
+        values.put("ttlSeconds", e.ttlSeconds());
+        return values;
     }
 
     static AiToolItem detail(final String modelRef, final String type, final long key,

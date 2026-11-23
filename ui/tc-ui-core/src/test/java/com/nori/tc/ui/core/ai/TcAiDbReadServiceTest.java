@@ -16,7 +16,7 @@ import static org.mockito.Mockito.*;
 /** LOT 후보·종료·판단 불가의 경계를 저장소와 분리해 확인합니다. */
 class TcAiDbReadServiceTest {
     private final TcAiReadPort port = mock(TcAiReadPort.class);
-    private final TcAiReadService service = new TcAiReadService(port);
+    private final TcAiReadService service = new TcAiReadService(port, mock(TcAiReadPort.RedisReads.class));
     private static final UiEqp EQP = new UiEqp(1L, "EQP", 2, null, null, false, null,
             null, 0, 3, null, null, null, true, null, null, null, null);
 

@@ -76,6 +76,8 @@ dependencies {
     compileOnly(libs.jackson.annotations)
 
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation("com.nori.ai:ai-integration-spring-boot-starter:1.0.0")
+    testImplementation("org.springframework.security:spring-security-test")
     /*
      * starter 테스트는 자동 구성 클래스를 직접 컴파일/로딩하면서
      * 외부 클래스 파일에 기록된 Jackson annotation 메타데이터까지 함께 해석합니다.
