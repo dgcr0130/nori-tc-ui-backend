@@ -8,17 +8,25 @@ import com.nori.tc.ui.adapters.web.config.UiWebAdapterModuleConfiguration;
 import com.nori.tc.ui.core.ai.TcAiReadPort;
 import com.nori.tc.ui.core.ai.TcAiReadPort.*;
 import com.nori.tc.ui.core.ai.TcAiReadService;
+import com.nori.tc.ui.core.eqp.EqpManagementSnapshot;
 import com.nori.tc.ui.core.port.db.*;
 import com.nori.tc.ui.core.properties.UiAuthProperties;
-import com.nori.tc.ui.domain.eqp.UiEqp;
+import com.nori.tc.ui.core.service.EqpManagementService;
+import com.nori.tc.ui.domain.eqp.*;
+import com.nori.tc.ui.domain.jar.UiBusinessJar;
+import com.nori.tc.ui.domain.jar.UiGatewayJar;
 import com.nori.tc.ui.domain.model.*;
+import com.nori.tc.ui.domain.common.eqp.*;
 import com.nori.tc.ui.domain.common.model.*;
+import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Import;
@@ -33,7 +41,9 @@ class TcAiToolConfigurationTest {
     private static final Instant OBSERVED = Instant.parse("2026-11-23T01:00:00Z");
     private static final OffsetDateTime TIME = OffsetDateTime.parse("2026-11-23T10:00+09:00");
     private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final String REGISTRATION_TOOL = "tc.eqp.readRegistration";
     private final TcAiReadPort port = mock(TcAiReadPort.class);
+    private final EqpManagementService management = mock(EqpManagementService.class);
     private final TcAiToolConfiguration configuration = new TcAiToolConfiguration(new TcAiReadService(port, mock(TcAiReadPort.RedisReads.class)));
 
     @Test
@@ -335,7 +345,7 @@ class TcAiToolConfigurationTest {
     }
 
     @Test
-    void explicitWebImportsAndConditionalGraphHaveOneResolverAndFourRegistrations() {
+    void explicitWebImportsAndConditionalGraphHaveOneResolverAndFiveRegistrations() {
         assertThat(UiWebAdapterModuleConfiguration.class.getAnnotation(Import.class).value())
                 .contains(TcAiIdentityResolver.class, TcAiToolConfiguration.class);
         var runner = new ApplicationContextRunner().withUserConfiguration(TcAiIdentityResolver.class,
@@ -343,6 +353,7 @@ class TcAiToolConfigurationTest {
         runner.run(context -> assertThat(context).hasNotFailed().doesNotHaveBean(TcAiReadService.class)
                 .doesNotHaveBean(AiRequestIdentityResolver.class).doesNotHaveBean(AiToolRegistration.class));
         runner.withPropertyValues("nori.ai.integration.enabled=true")
+                .withBean(EqpManagementService.class, () -> management)
                 .withBean(TcAiReadPort.class, () -> port)
                 .withBean(TcAiReadPort.RedisReads.class, () -> mock(TcAiReadPort.RedisReads.class))
                 .withBean(SessionPort.class, () -> mock(SessionPort.class))
@@ -352,8 +363,297 @@ class TcAiToolConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(AiRequestIdentityResolver.class);
                     assertThat(context.getBeansOfType(AiToolRegistration.class).values().stream().map(AiToolRegistration::toolId))
-                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
+                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.readRegistration",
+                                    "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
                 });
+    }
+
+    @Test
+    void registrationReusesManagementDetailAndIncludesEveryRegistrationSection() {
+        var detail = registrationDetail(List.of(registrationParameter(81, "GAS_FLOW", "125 sccm")));
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(detail));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        assertFalse(result.items().isEmpty());
+        assertTrue(result.missingFields().isEmpty());
+        Map.ofEntries(
+                Map.entry("eqpKey", 25L), Map.entry("eqpId", "PHOTO_001"), Map.entry("lineKey", 2L),
+                Map.entry("commInterface", "SECS"), Map.entry("commMode", "ACTIVE"), Map.entry("isDev", false),
+                Map.entry("routePartition", 1), Map.entry("eqpIp", "10.0.0.25"), Map.entry("eqpPort", 5000),
+                Map.entry("modelVersionKey", 3L), Map.entry("appliedParamVersion", "26.11.24.0001"),
+                Map.entry("gatewayJarKey", 51L), Map.entry("businessJarKey", 52L), Map.entry("enabled", true),
+                Map.entry("modelName", "PHOTO_MODEL"), Map.entry("modelVersion", "v3"),
+                Map.entry("deviceId", 101), Map.entry("t3Timeout", 45), Map.entry("t5Timeout", 10),
+                Map.entry("t6Timeout", 5), Map.entry("t7Timeout", 10), Map.entry("t8Timeout", 5),
+                Map.entry("linkTestEnabled", true), Map.entry("linkTestInterval", 30), Map.entry("maxMsgBytes", 1048576L),
+                Map.entry("socketProtocolType", "LINE_BASED"), Map.entry("charset", "UTF-8"),
+                Map.entry("heartbeatEnabled", true), Map.entry("heartbeatInterval", 20),
+                Map.entry("readTimeout", 31), Map.entry("writeTimeout", 32),
+                Map.entry("maxFrameSizeBytes", 65536), Map.entry("keepAliveEnabled", true),
+                Map.entry("plcProtocol", "MODBUS_TCP"), Map.entry("transport", "TCP"), Map.entry("unitId", 7),
+                Map.entry("pollTimeoutMs", 1500), Map.entry("reconnectMaxRetries", 4),
+                Map.entry("enabledPollGroups", List.of("READ_STATUS")), Map.entry("version", 6L),
+                Map.entry("logLevel", "DEBUG"), Map.entry("logRetentionDays", 14), Map.entry("logPath", "/logs/photo"),
+                Map.entry("eqpParamKey", 81L), Map.entry("paramName", "GAS_FLOW"), Map.entry("paramValue", "125 sccm"),
+                Map.entry("paramVersion", "26.11.24.0001"), Map.entry("eqpParamVersionKey", 91L),
+                Map.entry("versionDescription", "등록 버전 설명"), Map.entry("portId", "LP01"),
+                Map.entry("portType", "LOAD_PORT"), Map.entry("jarFileName", "photo-gateway.jar"))
+                .forEach((field, value) -> assertRegistrationValue(result, field, value));
+        assertRegistrationValue(result, "jarFileName", "photo-business.jar");
+        String text = registrationText(result);
+        assertThat(text).contains("PHOTO_001", "PHOTO_MODEL", "101", "LINE_BASED", "MODBUS_TCP", "/logs/photo",
+                "GAS_FLOW", "125 sccm", "등록 버전 설명", "LP01", "photo-gateway.jar", "photo-business.jar");
+        assertRegistrationEnvelopeKeepsEveryItem(result);
+        verify(management).getManageDetail("PHOTO_001");
+        verifyNoMoreInteractions(management);
+        verifyNoInteractions(port);
+    }
+
+    @Test
+    void registrationSucceedsWithoutLotsRuntimeStateOrOptionalSettings() {
+        var detail = registrationDetail(List.of());
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(new EqpManagementSnapshot(
+                detail.eqp(), null, null, null, null, null, null, null, List.of(), List.of(), List.of(), null, null)));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        assertFalse(result.items().isEmpty());
+        assertTrue(result.missingFields().isEmpty());
+        assertRegistrationValue(result, "eqpId", "PHOTO_001");
+        assertRegistrationEnvelopeKeepsEveryItem(result);
+        verify(management).getManageDetail("PHOTO_001");
+        verifyNoInteractions(port);
+    }
+
+    @Test
+    void registrationDoesNotExposeRuntimeConnectionOrLotFacts() {
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(registrationDetail(List.of())));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        for (String field : List.of("runtimeState", "connectionState", "controlState", "eqpState", "desiredState",
+                "activeWorks", "currentLot", "lotStatus")) {
+            assertTrue(registrationValues(result, field).isEmpty(), field);
+            assertFalse(registrationText(result).contains("(" + field + ")"), field);
+        }
+        assertThat(registrationText(result)).doesNotContain("RUNTIME_ONLY_MARKER", "CONNECTION_ONLY_MARKER");
+        verifyNoInteractions(port);
+    }
+
+    @Test
+    void registrationMissingEquipmentIsEmpty() {
+        when(management.getManageDetail("MISSING_EQP")).thenReturn(Optional.empty());
+        var result = registration(Map.of("eqp", "MISSING_EQP"));
+        assertEquals(AiToolResult.Status.EMPTY, result.status());
+        assertTrue(result.items().isEmpty());
+        var response = assemble(REGISTRATION_TOOL, result);
+        assertEquals(200, response.http());
+        assertEquals("EMPTY", JSON.readTree(response.body()).get("status").asString());
+        assertEquals(0, JSON.readTree(response.body()).at("/data/items").size());
+        verify(management).getManageDetail("MISSING_EQP");
+        verifyNoInteractions(port);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidRegistrationArguments")
+    void registrationRejectsMissingBlankWrongTypeLongAndAdditionalArguments(Map<String, Object> arguments) {
+        var result = registration(arguments);
+        assertEquals(AiToolResult.Status.FAILED, result.status());
+        assertTrue(result.items().isEmpty());
+        var response = assemble(REGISTRATION_TOOL, result);
+        assertEquals(400, response.http());
+        assertEquals("INPUT_INVALID", response.code());
+        assertTrue(JSON.readTree(response.body()).get("data").isNull());
+        verifyNoInteractions(management, port);
+    }
+
+    @Test
+    void registrationAcceptsThe64CharacterEqpBoundary() {
+        for (String eqp : List.of("E".repeat(64), "설".repeat(64))) {
+            var original = registrationDetail(List.of()).eqp();
+            var equipment = new UiEqp(original.eqpKey(), eqp, original.lineKey(), original.commInterface(),
+                    original.commMode(), original.isDev(), original.routePartition(), original.eqpIp(), original.eqpPort(),
+                    original.modelVersionKey(), null, null, null, true, TIME, TIME, null, null);
+            when(management.getManageDetail(eqp)).thenReturn(Optional.of(new EqpManagementSnapshot(
+                    equipment, null, null, null, null, null, null, null, List.of(), List.of(), List.of(), null, null)));
+            var result = registration(Map.of("eqp", eqp));
+            assertEquals(AiToolResult.Status.SUCCESS, result.status());
+            assertRegistrationValue(result, "eqpId", eqp);
+            verify(management).getManageDetail(eqp);
+        }
+        verifyNoInteractions(port);
+    }
+
+    @Test
+    void registrationTextUsesKoreanLabelsAndTheRequestedEqpOnEveryItem() {
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(
+                registrationDetail(List.of(registrationParameter(81, "GAS_FLOW", "125 sccm")))));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        assertFalse(result.items().isEmpty());
+        for (AiToolItem item : result.items()) {
+            assertTrue(item.text().lines().findFirst().orElseThrow().matches("\\[.*[가-힣].*]"));
+            assertThat(item.text().lines().toList()).contains("조회 조건 > 설비(eqp): PHOTO_001");
+        }
+        String text = registrationText(result);
+        assertThat(text).contains("설비 ID(eqpId): PHOTO_001", "모델 이름(modelName): PHOTO_MODEL",
+                "파라미터 이름(paramName): GAS_FLOW", "파라미터 값(paramValue): 125 sccm",
+                "설명(description): 파라미터 설명");
+        for (String field : List.of("deviceId", "socketProtocolType", "plcProtocol", "logRetentionDays",
+                "portId", "paramVersion", "versionDescription", "jarFileName")) {
+            assertTrue(text.lines().anyMatch(line -> line.matches(".*[가-힣][^()]*\\(" + field + "\\): .+")), field);
+        }
+    }
+
+    @Test
+    void registrationManyParametersAreSplitWithoutLosingRowsAtTheCommonTextLimit() {
+        var parameters = IntStream.rangeClosed(1, 24)
+                .mapToObj(i -> registrationParameter(i, "FLOW_%02d".formatted(i), "값%02d-".formatted(i) + "가".repeat(220)))
+                .toList();
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(registrationDetail(parameters)));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        assertTrue(registrationText(result).codePointCount(0, registrationText(result).length()) > 4000);
+        assertTrue(result.items().size() > 1);
+        assertThat(registrationValues(result, "eqpParamKey").stream().map(JsonNode::asLong).toList())
+                .containsExactlyInAnyOrderElementsOf(parameters.stream().map(UiEqpParam::eqpParamKey).toList());
+        for (var row : parameters) {
+            assertRegistrationValue(result, "paramName", row.paramName());
+            assertRegistrationValue(result, "paramValue", row.paramValue());
+            assertThat(registrationText(result)).contains(row.paramName(), row.paramValue());
+        }
+        assertRegistrationEnvelopeKeepsEveryItem(result);
+    }
+
+    @Test
+    void registrationOneLongParameterValueIsSplitWithoutDiscardingItsText() {
+        String value = "힣".repeat(2200) + "똠".repeat(2200) + "쀍".repeat(2200);
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(
+                registrationDetail(List.of(registrationParameter(81, "LONG_PARAMETER", value)))));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        String text = registrationText(result);
+        for (int character : List.of((int) '힣', (int) '똠', (int) '쀍')) {
+            assertTrue(text.codePoints().filter(codePoint -> codePoint == character).count() >= 2200,
+                    "장문 파라미터 값의 본문 보존");
+        }
+        assertRegistrationEnvelopeKeepsEveryItem(result);
+    }
+
+    @Test
+    void registrationOmitsSecretNamedParameterValuesAndJarBinaryPayloads() {
+        var secrets = List.of("PASSWORD_ONLY_MARKER", "TOKEN_ONLY_MARKER", "PRIVATE_KEY_ONLY_MARKER",
+                "JAR_PRIVATE_CONTENT_MARKER");
+        when(management.getManageDetail("PHOTO_001")).thenReturn(Optional.of(registrationDetail(List.of(
+                registrationParameter(81, "password", secrets.get(0)),
+                registrationParameter(82, "api_token", secrets.get(1)),
+                registrationParameter(83, "private_key", secrets.get(2)),
+                registrationParameter(84, "GAS_FLOW", "125 sccm")))));
+        var result = registration(Map.of("eqp", "PHOTO_001"));
+        assertEquals(AiToolResult.Status.SUCCESS, result.status());
+        String output = JSON.writeValueAsString(result.items());
+        for (String secret : secrets) {
+            assertThat(output).doesNotContain(secret, Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+        }
+        assertTrue(registrationValues(result, "jarFile").isEmpty());
+        assertRegistrationValue(result, "eqpKey", 25L);
+        assertRegistrationValue(result, "gatewayJarKey", 51L);
+        assertRegistrationValue(result, "businessJarKey", 52L);
+        assertRegistrationValue(result, "paramValue", "125 sccm");
+        assertThat(registrationText(result)).contains("125 sccm", "photo-gateway.jar", "photo-business.jar");
+        String envelope = new String(assemble(REGISTRATION_TOOL, result).body(), StandardCharsets.UTF_8);
+        for (String secret : secrets) assertFalse(envelope.contains(secret));
+    }
+
+    private AiToolResult registration(Map<String, Object> arguments) {
+        var result = new AtomicReference<AiToolResult>();
+        new ApplicationContextRunner().withUserConfiguration(TcAiToolConfiguration.class)
+                .withPropertyValues("nori.ai.integration.enabled=true")
+                .withBean(TcAiReadService.class, () -> new TcAiReadService(port, mock(TcAiReadPort.RedisReads.class)))
+                .withBean(EqpManagementService.class, () -> management)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var registrations = context.getBeansOfType(AiToolRegistration.class).values();
+                    assertThat(registrations.stream().map(AiToolRegistration::toolId).toList()).contains(REGISTRATION_TOOL);
+                    var registration = registrations.stream().filter(tool -> tool.toolId().equals(REGISTRATION_TOOL))
+                            .findFirst().orElseThrow();
+                    var now = Instant.now();
+                    result.set(registration.handler().handle(new AiToolCall("TC", "fixture-job", REGISTRATION_TOOL,
+                            "7", Set.of("EQP_READ"), arguments, List.of(), now.plusSeconds(10), now)));
+                });
+        return result.get();
+    }
+
+    private static java.util.stream.Stream<Map<String, Object>> invalidRegistrationArguments() {
+        Map<String, Object> explicitNull = new HashMap<>();
+        explicitNull.put("eqp", null);
+        return java.util.stream.Stream.of(Map.<String, Object>of(), explicitNull,
+                Map.of("eqp", ""), Map.of("eqp", " \t\n"), Map.of("eqp", "E".repeat(65)),
+                Map.of("eqp", "설".repeat(65)), Map.of("eqp", 25), Map.of("eqp", true),
+                Map.of("eqp", List.of("PHOTO_001")), Map.of("eqp", Map.of("id", "PHOTO_001")),
+                Map.of("unexpected", "PHOTO_001"), Map.of("eqp", "PHOTO_001", "unexpected", "value"),
+                Map.of("eqp", "PHOTO_001", "from", OBSERVED.toString()));
+    }
+
+    private static EqpManagementSnapshot registrationDetail(List<UiEqpParam> parameters) {
+        var eqp = new UiEqp(25L, "PHOTO_001", 2, UiProtocolType.SECS, "ACTIVE", false, 1, "10.0.0.25", 5000,
+                3, "26.11.24.0001", 51L, 52L, true, TIME, TIME, "fixture-creator", "fixture-updater");
+        var model = new UiModel(3, 4, "PHOTO_MODEL", "parent-ref", "v3", UiProtocolType.SECS,
+                UiModelStatus.OPERATE, "모델 설명", "fixture-maker", TIME, TIME, "fixture-creator", "fixture-updater");
+        byte[] jar = "JAR_PRIVATE_CONTENT_MARKER".getBytes(StandardCharsets.UTF_8);
+        return new EqpManagementSnapshot(eqp, model,
+                new UiEqpHsms(25, 101, 45, 10, 5, 10, 5, true, 30, 1048576L, TIME, TIME),
+                new UiEqpSocket(25, "LINE_BASED", "UTF-8", true, 20, 31, 32, 65536, true, TIME, TIME),
+                new UiEqpPlc(25, "MODBUS_TCP", "TCP", 7, 1500, 4, List.of("READ_STATUS"), 6, TIME, TIME),
+                new UiEqpLogPolicy(25, UiLogLevel.DEBUG, 14, "/logs/photo", TIME),
+                new UiEqpRuntimeState(25, UiControlState.REMOTE, UiEqpState.RUN, "RUNTIME_ONLY_MARKER", TIME, null, null, TIME),
+                "CONNECTION_ONLY_MARKER",
+                List.of(new UiEqpPortStatus(71, 25, "LP01", UiPortType.LOAD_PORT, "READY", null, null, null, TIME)),
+                parameters, List.of(new UiEqpParamVersion(91, 25, "26.11.24.0001", "등록 버전 설명", TIME, TIME, "fixture-creator", "fixture-updater")),
+                new UiGatewayJar(51, "photo-gateway.jar", jar, TIME, TIME, "fixture-creator", "fixture-updater"),
+                new UiBusinessJar(52, "photo-business.jar", jar, TIME, TIME, "fixture-creator", "fixture-updater"));
+    }
+
+    private static UiEqpParam registrationParameter(long key, String name, String value) {
+        return new UiEqpParam(key, 25, name, "26.11.24.0001", value, "파라미터 설명", "fixture-creator", TIME);
+    }
+
+    private static String registrationText(AiToolResult result) {
+        return String.join("\n", result.items().stream().map(AiToolItem::text).toList());
+    }
+
+    private static List<JsonNode> registrationValues(AiToolResult result, String field) {
+        var values = new ArrayList<JsonNode>();
+        result.items().forEach(item -> collectRegistrationValues(tree(item), field, values));
+        return values;
+    }
+
+    private static void collectRegistrationValues(JsonNode node, String field, List<JsonNode> values) {
+        if (node.isObject()) {
+            node.properties().forEach(entry -> {
+                if (entry.getKey().equals(field)) values.add(entry.getValue());
+                collectRegistrationValues(entry.getValue(), field, values);
+            });
+        } else if (node.isArray()) node.forEach(child -> collectRegistrationValues(child, field, values));
+    }
+
+    private static void assertRegistrationValue(AiToolResult result, String field, Object value) {
+        JsonNode expected = JSON.valueToTree(value);
+        assertTrue(registrationValues(result, field).stream().anyMatch(actual -> expected.isIntegralNumber()
+                ? actual.isIntegralNumber() && actual.asLong() == expected.asLong() : expected.equals(actual)), field);
+    }
+
+    private static void assertRegistrationEnvelopeKeepsEveryItem(AiToolResult result) {
+        assertFalse(result.items().isEmpty());
+        assertTrue(result.items().stream().allMatch(item -> item.text().codePointCount(0, item.text().length()) <= 4000));
+        var response = assemble(REGISTRATION_TOOL, result);
+        assertEquals(200, response.http());
+        var root = JSON.readTree(response.body());
+        assertEquals("SUCCESS", root.get("status").asString());
+        assertEquals(result.items().size(), root.at("/data/items").size());
+        assertEquals(0, root.get("missingFields").size());
+        for (int index = 0; index < result.items().size(); index++) {
+            assertEquals(result.items().get(index).ref(), root.at("/data/items/" + index + "/ref").asString());
+            assertEquals(result.items().get(index).text(), root.at("/data/items/" + index + "/text").asString());
+        }
     }
 
     private AiToolResult snapshot(Map<String, Object> arguments) {

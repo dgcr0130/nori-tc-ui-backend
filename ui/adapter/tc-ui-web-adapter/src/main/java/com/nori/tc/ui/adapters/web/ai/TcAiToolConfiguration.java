@@ -5,6 +5,7 @@ import com.nori.ai.integration.api.AiToolItem;
 import com.nori.ai.integration.api.AiToolRegistration;
 import com.nori.ai.integration.api.AiToolResult;
 import com.nori.tc.ui.core.ai.TcAiReadService;
+import com.nori.tc.ui.core.service.EqpManagementService;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -14,7 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** TC의 DB·Redis 읽기 네 도구를 공통 처리기 등록 형식으로 연결합니다. */
+/** TC의 DB·Redis 읽기 다섯 도구를 공통 처리기 등록 형식으로 연결합니다. */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "nori.ai.integration.enabled", havingValue = "true")
 public class TcAiToolConfiguration {
@@ -42,6 +43,20 @@ public class TcAiToolConfiguration {
     @Bean
     public AiToolRegistration tcAiCommLogsSearch() {
         return AiToolRegistration.of("tc.commLogs.search", this::commLogs);
+    }
+
+    @Bean
+    public AiToolRegistration tcAiEqpRegistration(final EqpManagementService management) {
+        return AiToolRegistration.of("tc.eqp.readRegistration", call -> registration(call, management));
+    }
+
+    private static AiToolResult registration(final AiToolCall call, final EqpManagementService management) {
+        if (!validEqp(call) || call.arguments().get("eqp") == null) return invalidInput();
+        String eqp = (String) call.arguments().get("eqp");
+        var detail = management.getManageDetail(eqp);
+        var items = detail.map(snapshot -> TcAiToolValues.registration(eqp, snapshot,
+                TcAiToolValues.conditions(call.arguments()))).orElseGet(List::of);
+        return result(detail.isPresent() ? AiToolResult.Status.SUCCESS : AiToolResult.Status.EMPTY, items, List.of());
     }
 
     private AiToolResult dlq(final AiToolCall call) {

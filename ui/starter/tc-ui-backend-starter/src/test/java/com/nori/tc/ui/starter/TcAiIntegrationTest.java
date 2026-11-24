@@ -16,6 +16,7 @@ import com.nori.tc.ui.core.ai.TcAiRedisFacts.*;
 import com.nori.tc.ui.core.coordination.UiPermissionCatalogGuard;
 import com.nori.tc.ui.core.port.db.*;
 import com.nori.tc.ui.core.properties.UiAuthProperties;
+import com.nori.tc.ui.core.service.EqpManagementService;
 import com.nori.tc.ui.core.usecase.ValidateTokenUseCase;
 import com.nori.tc.ui.domain.auth.*;
 import com.nori.tc.ui.domain.common.user.*;
@@ -73,6 +74,7 @@ class TcAiIntegrationTest {
     @TempDir Path directory;
     private final TcAiReadPort db = mock(TcAiReadPort.class);
     private final TcAiReadPort.RedisReads redis = mock(TcAiReadPort.RedisReads.class);
+    private final EqpManagementService management = mock(EqpManagementService.class);
     private final SessionPort sessions = mock(SessionPort.class);
     private final UserPort users = mock(UserPort.class);
     private final PermissionPort permissions = mock(PermissionPort.class);
@@ -109,6 +111,7 @@ class TcAiIntegrationTest {
         when(cachedAuth.execute(sessionToken)).thenReturn(new UserPrincipal(7, "fixture-user", Set.of("EQP_READ")));
         when(db.readEquipment("EQP")).thenReturn(Optional.empty());
         when(db.readModels(null)).thenReturn(List.of());
+        when(management.getManageDetail("EQP")).thenReturn(Optional.empty());
         for (Source source : Source.values()) {
             when(redis.readDlq(eq(source), any())).thenReturn(List.of(dlqFact(source, 0)));
             when(redis.readCommLogs(eq(source), anyString(), any(), any(), any())).thenReturn(List.of(
@@ -129,6 +132,7 @@ class TcAiIntegrationTest {
         context.addBeanFactoryPostProcessor(factory -> {
             factory.registerSingleton("testDbReads", db);
             factory.registerSingleton("testRedisReads", redis);
+            factory.registerSingleton("testEqpManagement", management);
             factory.registerSingleton("testSessions", sessions);
             factory.registerSingleton("testUsers", users);
             factory.registerSingleton("testPermissions", permissions);
@@ -181,7 +185,7 @@ class TcAiIntegrationTest {
     }
 
     @Test
-    void fileSettingsAndFourHandlersMatchAndSignedHttpRoundTripUsesCurrentIdentity() throws Exception {
+    void fileSettingsAndFiveHandlersMatchAndSignedHttpRoundTripUsesCurrentIdentity() throws Exception {
         var properties = context.getBean(AiIntegrationProperties.class);
         assertTrue(properties.enabled());
         assertEquals(AiIntegrationProperties.BrowserCredential.COOKIE, properties.browserCredential());
@@ -190,11 +194,11 @@ class TcAiIntegrationTest {
         assertEquals(1, context.getBeansOfType(AiRequestIdentityResolver.class).size());
         var registered = context.getBeansOfType(AiToolRegistration.class).values().stream().map(AiToolRegistration::toolId).sorted().toList();
         assertEquals(properties.tools().stream().map(AiIntegrationProperties.Tool::id).sorted().toList(), registered);
-        assertEquals(4, registered.size());
+        assertEquals(5, registered.size());
         var response = question();
         assertEquals(202, response.statusCode()); assertNull(gatewayFailure.get());
-        assertEquals(4, results.size());
-        assertEquals(List.of("EMPTY", "EMPTY", "PARTIAL", "PARTIAL"), results.stream().map(n -> n.get("status").asString()).toList());
+        assertEquals(5, results.size());
+        assertEquals(List.of("EMPTY", "EMPTY", "PARTIAL", "PARTIAL", "EMPTY"), results.stream().map(n -> n.get("status").asString()).toList());
         assertEquals("7", assertions.getFirst().get("sub").asString());
         assertEquals("TC", assertions.getFirst().get("sys").asString());
         assertEquals("tc-ui-backend", assertions.getFirst().get("iss").asString());
@@ -203,6 +207,7 @@ class TcAiIntegrationTest {
         assertEquals(60, assertions.getFirst().get("exp").asLong() - assertions.getFirst().get("iat").asLong());
         assertEquals(ALL, permissionSet(assertions.getFirst()));
         verify(db).readEquipment("EQP"); verify(db).readModels(null);
+        verify(management).getManageDetail("EQP");
         verify(redis).readDlq(eq(Source.GATEWAY), any());
         verify(redis).readCommLogs(eq(Source.BUSINESS), eq("EQP"), eq(FROM), eq(FROM.plusSeconds(10)), any());
         verify(cachedAuth, never()).execute(anyString());
@@ -239,7 +244,7 @@ class TcAiIntegrationTest {
         var next = assertions.getLast();
         assertEquals(Set.of("EQP_READ"), permissionSet(next));
         assertNotEquals(old.get("pdg").asString(), next.get("pdg").asString());
-        assertEquals(List.of("EMPTY", "DENIED", "DENIED", "DENIED"), results.stream().map(n -> n.get("status").asString()).toList());
+        assertEquals(List.of("EMPTY", "DENIED", "DENIED", "DENIED", "EMPTY"), results.stream().map(n -> n.get("status").asString()).toList());
         for (JsonNode result : results.subList(1, 4)) {
             assertEquals("DELEGATION_DENIED", result.get("errorCode").asString());
             assertTrue(result.get("data").isNull());
@@ -253,6 +258,30 @@ class TcAiIntegrationTest {
         when(sessions.findValidByToken(sessionToken)).thenReturn(Optional.empty());
         assertEquals(401, send("GET", "/api/ai/session", sessionCookie(), null).statusCode());
         assertEquals(200, internal(old, "tc.dlq.list", Map.of()).statusCode());
+    }
+
+    @Test
+    void registrationRequiresOnlyEqpReadAndDenialDoesNotReadManagementDetail() throws Exception {
+        var tools = context.getBean(AiIntegrationProperties.class).tools();
+        assertEquals(List.of(List.of("EQP_READ")), tools.stream()
+                .filter(tool -> tool.id().equals("tc.eqp.readRegistration"))
+                .map(AiIntegrationProperties.Tool::requiredPermissions).toList());
+        currentPermissions.set(Set.of("EQP_READ"));
+        assertEquals(202, question().statusCode());
+        assertNull(gatewayFailure.get());
+        assertEquals("EMPTY", results.getLast().get("status").asString());
+        verify(management).getManageDetail("EQP");
+        currentPermissions.set(Set.of("MODEL_READ"));
+        results.clear();
+        clearInvocations(management);
+        assertEquals(202, question().statusCode());
+        assertNull(gatewayFailure.get());
+        var denied = results.getLast();
+        assertEquals("tc.eqp.readRegistration", denied.get("toolId").asString());
+        assertEquals("DENIED", denied.get("status").asString());
+        assertEquals("DELEGATION_DENIED", denied.get("errorCode").asString());
+        assertTrue(denied.get("data").isNull());
+        verifyNoInteractions(management);
     }
 
     @Test
@@ -324,9 +353,10 @@ class TcAiIntegrationTest {
                 var claims = JSON.readTree(Base64.getUrlDecoder().decode(parts[1]));
                 assertEquals(AiDelegationCodec.digest(permissionSet(claims)), claims.get("pdg").asString());
                 privateMarkers.add(claims.get("dlg").asString()); assertions.add(claims);
-                for (String tool : List.of("tc.eqp.getOperationalSnapshot", "tc.model.read", "tc.dlq.list", "tc.commLogs.search")) {
+                for (String tool : List.of("tc.eqp.getOperationalSnapshot", "tc.model.read", "tc.dlq.list", "tc.commLogs.search",
+                        "tc.eqp.readRegistration")) {
                     Map<String, Object> args = switch (tool) {
-                        case "tc.eqp.getOperationalSnapshot" -> Map.of("eqp", "EQP");
+                        case "tc.eqp.getOperationalSnapshot", "tc.eqp.readRegistration" -> Map.of("eqp", "EQP");
                         case "tc.commLogs.search" -> Map.of("eqp", "EQP", "from", FROM.toString(), "to", FROM.plusSeconds(10).toString());
                         default -> Map.of();
                     };

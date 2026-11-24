@@ -1,10 +1,12 @@
 package com.nori.tc.ui.starter;
 
+import com.nori.ai.integration.api.AiToolRegistration;
 import com.nori.tc.ui.adapter.db.UiDbAdapterModuleConfiguration;
 import com.nori.tc.ui.adapters.redis.config.UiRedisAdapterModuleConfiguration;
 import com.nori.tc.ui.adapters.web.config.UiWebAdapterModuleConfiguration;
 import com.nori.tc.ui.core.ai.TcAiReadPort;
 import com.nori.tc.ui.core.ai.TcAiReadService;
+import com.nori.tc.ui.core.service.EqpManagementService;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
@@ -20,17 +22,18 @@ class TcAiConfigurationContextTest {
             "TcAiIdentityResolver", "TcAiToolConfiguration", "TcAiRedisReadAdapter");
 
     @Test
-    void moduleImportsAssembleTheFourToolGraph() throws ClassNotFoundException {
+    void moduleImportsAssembleTheFiveToolGraph() throws ClassNotFoundException {
         Class<?>[] imports = Stream.of(UiDbAdapterModuleConfiguration.class, UiCoreModuleConfiguration.class,
                         UiWebAdapterModuleConfiguration.class, UiRedisAdapterModuleConfiguration.class)
                 .flatMap(module -> Arrays.stream(module.getAnnotation(Import.class).value()))
                 .filter(type -> AI_TYPES.contains(type.getSimpleName())).toArray(Class<?>[]::new);
         assertThat(imports).extracting(Class::getSimpleName).containsExactlyInAnyOrderElementsOf(AI_TYPES);
         Class<?> resolver = Class.forName("com.nori.ai.integration.api.AiRequestIdentityResolver");
-        Class<?> registration = Class.forName("com.nori.ai.integration.api.AiToolRegistration");
+        Class<AiToolRegistration> registration = AiToolRegistration.class;
         var runner = new ApplicationContextRunner().withUserConfiguration(imports);
         runner.run(context -> assertThat(context).hasNotFailed().doesNotHaveBean(TcAiReadService.class));
         runner.withPropertyValues("nori.ai.integration.enabled=true").withInitializer(context -> {
+            context.getBeanFactory().registerSingleton("testEqpManagement", Mockito.mock(EqpManagementService.class));
             // 실제 읽기 adapter와 resolver의 저장소 경계만 대역으로 공급합니다.
             Arrays.stream(imports).filter(type -> type.getSimpleName().equals("TcAiDbReadAdapter")
                             || type.getSimpleName().equals("TcAiIdentityResolver")
@@ -45,7 +48,10 @@ class TcAiConfigurationContextTest {
             assertThat(context).hasNotFailed().hasSingleBean(TcAiReadService.class).hasSingleBean(TcAiReadPort.class);
             assertThat(context).hasSingleBean(TcAiReadPort.RedisReads.class);
             assertThat(context.getBeansOfType(resolver)).hasSize(1);
-            assertThat(context.getBeansOfType(registration)).hasSize(4);
+            assertThat(context.getBeansOfType(registration)).hasSize(5);
+            assertThat(context.getBeansOfType(registration).values()).extracting(AiToolRegistration::toolId)
+                    .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.readRegistration",
+                            "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
         });
     }
 }
