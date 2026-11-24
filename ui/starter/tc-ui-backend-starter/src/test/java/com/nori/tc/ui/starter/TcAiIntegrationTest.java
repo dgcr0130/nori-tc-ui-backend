@@ -69,7 +69,7 @@ class TcAiIntegrationTest {
     private static final Instant FROM = Instant.parse("2026-11-23T00:00:00Z");
     private static final String JOB = "12d55b20-b2e1-42d0-8e6f-fd151206f433";
     private static final Set<String> ALL = Set.of("EQP_READ", "MODEL_READ", "DLQ_READ", "COMM_LOG_READ",
-            "AI_DOC_READ", "AI_ADMIN_DOC_READ", "AI_LOG_READ", "AI_TRACE_READ", "AI_REVIEW");
+            "AI_DOC_READ", "AI_ADMIN_DOC_READ", "AI_LOG_READ", "AI_TRACE_READ", "AI_CODE_READ", "AI_REVIEW");
     private static final List<Path> TEMP_DIRECTORIES = new CopyOnWriteArrayList<>();
     @TempDir Path directory;
     private final TcAiReadPort db = mock(TcAiReadPort.class);
