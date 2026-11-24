@@ -77,6 +77,77 @@ class TcAiToolConfigurationTest {
     }
 
     @Test
+    void snapshotTextHasTitleRequestedEqpAndOneLabelledFactPerLine() {
+        var eqp = new UiEqp(25L, "CLN_001", 2, UiProtocolType.SECS, null, false, 1, "10.0.0.5", 5000,
+                3, null, null, null, true, TIME, TIME, null, null);
+        when(port.readEquipment("CLN_001")).thenReturn(Optional.of(new EquipmentFacts(eqp,
+                new EqpQueryPort.EqpRuntimeStateView("OFFLINE", "DOWN", null, "STARTED"), List.of())));
+        var item = snapshot(Map.of("eqp", "CLN_001")).items().getFirst();
+        assertEquals(String.join("\n",
+                "[설비 운영 스냅샷]",
+                "조회 조건 > 설비(eqp): CLN_001",
+                "설비 > 설비 키(eqpKey): 25",
+                "설비 > 설비 ID(eqpId): CLN_001",
+                "설비 > 라인 키(lineKey): 2",
+                "설비 > 통신 방식(commInterface): SECS",
+                "설비 > 통신 모드(commMode): 없음",
+                "설비 > 개발 설비 여부(isDev): false",
+                "설비 > 라우팅 파티션(routePartition): 1",
+                "설비 > 설비 IP(eqpIp): 10.0.0.5",
+                "설비 > 설비 포트(eqpPort): 5000",
+                "설비 > 모델 버전 키(modelVersionKey): 3",
+                "설비 > 적용 파라미터 버전(appliedParamVersion): 없음",
+                "설비 > Gateway JAR 키(gatewayJarKey): 없음",
+                "설비 > Business JAR 키(businessJarKey): 없음",
+                "설비 > 사용 여부(enabled): true",
+                "설비 > 생성 시각(createdAt): 2026-11-23T01:00:00Z",
+                "설비 > 수정 시각(updatedAt): 2026-11-23T01:00:00Z",
+                "설비 > 생성자(createdBy): 없음",
+                "설비 > 수정자(updatedBy): 없음",
+                "실시간 상태 > 제어 상태(controlState): OFFLINE",
+                "실시간 상태 > 설비 상태(eqpState): DOWN",
+                "실시간 상태 > 연결 상태(connectionState): 없음",
+                "실시간 상태 > 연결 의도(desiredState): STARTED",
+                "진행 작업(activeWorks): 없음",
+                "LOT 상태(lotStatus): UNKNOWN",
+                "현재 LOT(currentLot): 없음"), item.text());
+        assertEquals("DOWN", tree(item).at("/runtimeState/eqpState").asString());
+    }
+
+    @Test
+    void nestedListElementsAreNumberedAndSourceLineBreaksStayOnOneLine() {
+        var eqp = new UiEqp(1L, "EQP", 2, null, null, false, null, null, 0, 3, null, null, null, true, null, null, null, null);
+        var lot = new Lot(5, 9, null, "LOT1", null, null, TIME);
+        var work = new Work(9, 1, "W1", null, null, "start", TIME, null, "첫 줄\r\n둘째 줄", TIME, TIME, List.of(lot));
+        when(port.readEquipment("EQP")).thenReturn(Optional.of(new EquipmentFacts(eqp, null, List.of(work))));
+        var item = snapshot(Map.of("eqp", "EQP")).items().getFirst();
+        assertThat(item.text().lines().toList()).contains(
+                "진행 작업 1: 작업 키 9, 설비 키 1, 작업 ID W1, 작업자 ID 없음, 공정 순번 없음, 작업 상태 start, "
+                        + "시작 시각 2026-11-23T01:00:00Z, 종료 시각 없음, MES 메시지 첫 줄 둘째 줄, "
+                        + "생성 시각 2026-11-23T01:00:00Z, 수정 시각 2026-11-23T01:00:00Z",
+                "진행 작업 1 > LOT 1: 작업 LOT 키 5, 작업 키 9, 캐리어 ID 없음, LOT ID LOT1, 상위 LOT ID 없음, 챔버 ID 없음, "
+                        + "수정 시각 2026-11-23T01:00:00Z",
+                "LOT 상태(lotStatus): ACTIVE",
+                "현재 LOT > LOT ID(lotId): LOT1");
+        assertEquals("첫 줄\r\n둘째 줄", tree(item).at("/activeWorks/0/mesMessage").asString());
+    }
+
+    @Test
+    void labelledTextKeepsAtLeastTheJsonLotCapacityUnderCommonTextLimit() {
+        var eqp = new UiEqp(25L, "CLN_001", 2, UiProtocolType.SECS, null, false, 1, "10.0.0.5", 5000,
+                3, null, null, null, true, TIME, TIME, null, null);
+        var lots = IntStream.rangeClosed(1, 22).mapToObj(i -> new Lot(i, 9, "CARRIER01", "LOT%04d".formatted(i), null, null, TIME)).toList();
+        var work = new Work(9, 25, "W9", "OP01", 1, "start", TIME, null, null, TIME, TIME, lots);
+        when(port.readEquipment("CLN_001")).thenReturn(Optional.of(new EquipmentFacts(eqp,
+                new EqpQueryPort.EqpRuntimeStateView("OFFLINE", "DOWN", null, "STARTED"), List.of(work))));
+        var result = snapshot(Map.of("eqp", "CLN_001"));
+        var item = result.items().getFirst();
+        assertTrue(JSON.writeValueAsString(item.values()).length() <= 4000, "같은 자료의 JSON도 상한 안");
+        assertTrue(item.text().codePointCount(0, item.text().length()) <= 4000);
+        assertEquals(1, JSON.readTree(assemble("tc.eqp.getOperationalSnapshot", result).body()).at("/data/items").size());
+    }
+
+    @Test
     void snapshotStatusesAreCompatibleWithCommonEnvelope() {
         when(port.readEquipment("EQP")).thenReturn(Optional.empty());
         assertEquals("EMPTY", envelope(snapshot(Map.of("eqp", "EQP"))).get("status").asString());
@@ -141,9 +212,19 @@ class TcAiToolConfigurationTest {
         assertTrue(basic.get("description").isNull());
         assertTrue(result.items().stream().allMatch(item -> item.time() == null));
         assertEquals("2026-11-23T01:00:00Z", basic.get("updatedAt").asString());
-        assertEquals("{\"detailType\":\"model-parameter\",\"row\":{\"modelParamKey\":8,\"modelVersionKey\":3,"
-                + "\"paramName\":\"P8\",\"paramValue\":null,\"description\":null,\"updatedAt\":\"2026-11-23T01:00:00Z\"}}",
-                result.items().get(1).text());
+        assertEquals(String.join("\n",
+                "[모델 파라미터]",
+                "조회 조건 > 설비(eqp): EQP",
+                "상세 종류(detailType): model-parameter",
+                "내용 > 모델 파라미터 키(modelParamKey): 8",
+                "내용 > 모델 버전 키(modelVersionKey): 3",
+                "내용 > 파라미터 이름(paramName): P8",
+                "내용 > 파라미터 값(paramValue): 없음",
+                "내용 > 설명(description): 없음",
+                "내용 > 수정 시각(updatedAt): 2026-11-23T01:00:00Z"), result.items().get(1).text());
+        assertEquals(List.of("[모델 정의]", "[SECS 메시지 정의]", "[SOCKET 메시지 정의]", "[MES 메시지 정의]"),
+                List.of(0, 3, 5, 6).stream().map(i -> result.items().get(i).text().lines().findFirst().orElseThrow()).toList());
+        assertEquals("조회 조건 > 설비(eqp): EQP", result.items().getFirst().text().lines().skip(1).findFirst().orElseThrow());
         keys(tree(result.items().get(1)), "detailType row");
         keys(tree(result.items().get(1)).get("row"), "modelParamKey modelVersionKey paramName paramValue description updatedAt");
         keys(tree(result.items().get(3)).get("row"), "secsMsgKey modelVersionKey secsMsgName description updatedAt");
@@ -295,8 +376,7 @@ class TcAiToolConfigurationTest {
         return JSON.readTree(assemble("tc.model.read", result).body());
     }
     private static JsonNode tree(AiToolItem item) {
-        assertEquals(JSON.writeValueAsString(item.values()), item.text());
-        return JSON.readTree(item.text());
+        return JSON.valueToTree(item.values());
     }
     private static void keys(JsonNode node, String expected) {
         var actual = new HashSet<String>();

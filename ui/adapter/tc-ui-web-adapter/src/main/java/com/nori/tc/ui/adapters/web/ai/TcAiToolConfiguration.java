@@ -49,8 +49,9 @@ public class TcAiToolConfiguration {
         try { input = redisInput(call); }
         catch (IllegalArgumentException invalid) { return invalidInput(); }
         var facts = reads.readDlq(input.eqp(), input.from(), input.to(), call.deadline());
+        var conditions = TcAiToolValues.conditions(call.arguments());
         var items = facts.items().stream().map(fact -> TcAiToolValues.timedItem(fact.ref(),
-                TcAiToolValues.dlq(fact), fact.time())).toList();
+                TcAiToolValues.DLQ_TITLE, conditions, TcAiToolValues.dlq(fact), fact.time())).toList();
         return beforeDeadline(call, result(AiToolResult.Status.valueOf(facts.status().name()),
                 items, facts.missingFields()));
     }
@@ -61,8 +62,9 @@ public class TcAiToolConfiguration {
         catch (IllegalArgumentException invalid) { return invalidInput(); }
         if (input.eqp() == null || input.from() == null) return invalidInput();
         var facts = reads.readCommLogs(input.eqp(), input.from(), input.to(), call.deadline());
+        var conditions = TcAiToolValues.conditions(call.arguments());
         var items = facts.items().stream().map(fact -> TcAiToolValues.timedItem(fact.ref(),
-                TcAiToolValues.commLog(fact), fact.time())).toList();
+                TcAiToolValues.COMM_LOG_TITLE, conditions, TcAiToolValues.commLog(fact), fact.time())).toList();
         var status = AiToolResult.Status.valueOf(facts.status().name());
         var result = status == AiToolResult.Status.PARTIAL
                 ? new AiToolResult(status, items, facts.missingFields(),
@@ -111,26 +113,28 @@ public class TcAiToolConfiguration {
         String eqp = (String) call.arguments().get("eqp");
         var result = reads.readOperationalSnapshot(eqp);
         var items = result.snapshot() == null ? List.<AiToolItem>of()
-                : List.of(TcAiToolValues.item(eqp, TcAiToolValues.snapshot(result.snapshot())));
+                : List.of(TcAiToolValues.item(eqp, TcAiToolValues.SNAPSHOT_TITLE,
+                        TcAiToolValues.conditions(call.arguments()), TcAiToolValues.snapshot(result.snapshot())));
         return result(AiToolResult.Status.valueOf(result.status().name()), items, result.missingFields());
     }
 
     private AiToolResult models(final AiToolCall call) {
         if (!validEqp(call)) return invalidInput();
         var facts = reads.readModels((String) call.arguments().get("eqp"));
+        var conditions = TcAiToolValues.conditions(call.arguments());
         List<AiToolItem> items = new ArrayList<>();
         for (var fact : facts) {
             var model = fact.model();
             String ref = Long.toString(model.modelVersionKey());
-            items.add(TcAiToolValues.item(ref, TcAiToolValues.model(model)));
+            items.add(TcAiToolValues.item(ref, TcAiToolValues.MODEL_TITLE, conditions, TcAiToolValues.model(model)));
             fact.parameters().forEach(row -> items.add(TcAiToolValues.detail(ref, "model-parameter",
-                    row.modelParamKey(), TcAiToolValues.parameter(row))));
+                    row.modelParamKey(), TcAiToolValues.parameter(row), conditions)));
             fact.secsMessages().forEach(row -> items.add(TcAiToolValues.detail(ref, "secs-message",
-                    row.secsMsgKey(), TcAiToolValues.secs(row))));
+                    row.secsMsgKey(), TcAiToolValues.secs(row), conditions)));
             fact.socketMessages().forEach(row -> items.add(TcAiToolValues.detail(ref, "socket-message",
-                    row.socketMsgKey(), TcAiToolValues.socket(row))));
+                    row.socketMsgKey(), TcAiToolValues.socket(row), conditions)));
             fact.mesMessages().forEach(row -> items.add(TcAiToolValues.detail(ref, "mes-message",
-                    row.mesMsgKey(), TcAiToolValues.mes(row))));
+                    row.mesMsgKey(), TcAiToolValues.mes(row), conditions)));
         }
         return result(items.isEmpty() ? AiToolResult.Status.EMPTY : AiToolResult.Status.SUCCESS, items, List.of());
     }

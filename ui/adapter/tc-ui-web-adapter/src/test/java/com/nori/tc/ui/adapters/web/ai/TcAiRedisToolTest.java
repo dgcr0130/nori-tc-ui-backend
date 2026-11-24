@@ -17,8 +17,9 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-/** Redis 처리기의 입력·한 건 JSON·시각·공통 외피 일관성을 확인합니다. */
+/** Redis 처리기의 입력·한 건 JSON 값과 이름표 본문·시각·공통 외피 일관성을 확인합니다. */
 class TcAiRedisToolTest {
     private static final Instant FROM = Instant.parse("2026-11-23T00:00:00Z");
     private static final Instant TO = FROM.plusSeconds(10);
@@ -49,8 +50,24 @@ class TcAiRedisToolTest {
         var first = result.items().getFirst();
         assertEquals("gateway:g-key:2", first.ref());
         assertEquals(FROM, first.time());
-        assertEquals(JSON.writeValueAsString(first.values()), first.text());
-        var tree = JSON.readTree(first.text());
+        assertEquals(String.join("\n",
+                "[DLQ 데드레터 큐 목록 항목]",
+                "출처(source): gateway",
+                "내용 > DLQ ID(dlqId): g",
+                "내용 > 설비 ID(equipmentId): EQP",
+                "내용 > 추적 ID(traceId): 없음",
+                "내용 > 통신 방식(commInterfaceType): SECS",
+                "내용 > 소켓 유형(socketType): 없음",
+                "내용 > 실패 단계(stage): stage",
+                "내용 > 실패 사유 코드(reasonCode): code",
+                "내용 > 실패 사유 메시지(reasonMessage): 없음",
+                "내용 > 발생 시각(occurredAt): " + FROM.toEpochMilli(),
+                "내용 > 원문 참조 키(payloadRefKey): 없음",
+                "내용 > 원문 길이(rawLen): 123",
+                "내용 > Base64 길이(b64Len): 456",
+                "내용 > 태그 > tag: 값",
+                "내용 > 보존 시간 초(ttlSeconds): 없음"), first.text());
+        var tree = JSON.valueToTree(first.values());
         assertEquals(List.of("source", "entry"), tree.propertyNames().stream().toList());
         assertEquals(List.of("dlqId", "equipmentId", "traceId", "commInterfaceType", "socketType", "stage",
                 "reasonCode", "reasonMessage", "occurredAt", "payloadRefKey", "rawLen", "b64Len", "tags", "ttlSeconds"),
@@ -61,14 +78,16 @@ class TcAiRedisToolTest {
         assertEquals("값", tree.at("/entry/tags/tag").asString());
         var second = result.items().getLast();
         assertEquals("business:b-key:7", second.ref());
-        var business = JSON.readTree(second.text());
+        var business = JSON.valueToTree(second.values());
         assertEquals("business", business.get("source").asString());
         assertEquals("UI_BACKEND", business.at("/entry/source").asString());
         assertEquals(List.of("dlqId", "source", "stage", "reasonCode", "reasonMessage", "occurredAt", "topic",
                 "partition", "offset", "eqpId", "messageType", "messageName", "traceId", "payloadRef", "tags", "ttlSeconds"),
                 business.get("entry").propertyNames().stream().toList());
         assertTrue(business.at("/entry/tags").isNull());
-        assertEquals(JSON.writeValueAsString(second.values()), second.text());
+        assertThat(second.text().lines().toList()).contains("출처(source): business", "내용 > 출처(source): UI_BACKEND",
+                "내용 > 설비 ID(eqpId): EQP", "내용 > Kafka 토픽(topic): 없음", "내용 > 파티션(partition): 3",
+                "내용 > 태그(tags): 없음", "내용 > 보존 시간 초(ttlSeconds): 30");
         assertEquals(200, envelope("tc.dlq.list", result).http());
     }
 
@@ -79,8 +98,17 @@ class TcAiRedisToolTest {
         var result = logs(period());
         var item = result.items().getFirst();
         assertEquals(FROM, item.time());
-        assertEquals("{\"source\":\"gateway\",\"occurredAt\":\"2026-11-23T00:00:00Z\",\"direction\":null,\"messageName\":\"S3F17\"}", item.text());
-        assertEquals(JSON.writeValueAsString(item.values()), item.text());
+        assertEquals(String.join("\n",
+                "[통신 로그]",
+                "조회 조건 > 설비(eqp): EQP",
+                "조회 조건 > 시작 시각(from): 2026-11-23T00:00:00Z",
+                "조회 조건 > 종료 시각(to): 2026-11-23T00:00:10Z",
+                "출처(source): gateway",
+                "발생 시각(occurredAt): 2026-11-23T00:00:00Z",
+                "송수신 방향(direction): 없음",
+                "메시지 이름(messageName): S3F17"), item.text());
+        assertEquals("{\"source\":\"gateway\",\"occurredAt\":\"2026-11-23T00:00:00Z\",\"direction\":null,\"messageName\":\"S3F17\"}",
+                JSON.writeValueAsString(item.values()));
         assertEquals(List.of(AiToolResult.Warning.RETENTION_UNVERIFIED), result.warnings());
         assertEquals(List.of(new AiToolResult.TimeRange(FROM, TO)), result.retentionMeta().unverifiedRanges());
         assertEquals(200, envelope("tc.commLogs.search", result).http());
@@ -143,7 +171,7 @@ class TcAiRedisToolTest {
         assertEquals(AiToolResult.Status.PARTIAL, result.status());
         var item = dlq(Map.of()).items().getFirst();
         assertNull(item.time());
-        assertEquals(-1L, JSON.readTree(item.text()).at("/entry/occurredAt").asLong());
+        assertEquals(-1L, JSON.valueToTree(item.values()).at("/entry/occurredAt").asLong());
         assertEquals(400, envelope("tc.dlq.list", dlq(Map.of("from", FROM.toString(), "to", "2026-11-23T00:00:10+00:00"))).http());
     }
 
