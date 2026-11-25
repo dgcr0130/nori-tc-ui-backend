@@ -12,7 +12,7 @@ version = "0.0.1-SNAPSHOT"
 
 dependencies {
     implementation(project(":ui:tc-ui-core"))
-    implementation("com.nori.ai:ai-integration-spring-boot-starter:1.0.4")
+    implementation("com.nori.ai:ai-integration-spring-boot-starter:1.0.5")
     // TraceIdGenerator 등 중립 runtime 도구(SPEC §8.1 #83 REPLACE, 유효 version common 0.0.4)
     implementation("com.nori.common:nori-common-runtime-support:0.0.4")
     // 공통 로깅 유틸리티: helper 외 MDC 직접 호출 금지(W4 ArchUnit) 준수를 위한 traceId 스코프 헬퍼
