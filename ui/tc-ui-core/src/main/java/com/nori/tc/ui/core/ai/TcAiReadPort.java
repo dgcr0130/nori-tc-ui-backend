@@ -24,6 +24,14 @@ public interface TcAiReadPort {
 
     Optional<EquipmentFacts> readEquipment(String eqpId);
 
+    /** 설비 존재와 관측 런타임만 조회하며 작업·LOT를 읽지 않습니다. */
+    Optional<EqpRuntimeStateView> readConnection(String eqpId);
+
+    /** 호출자가 이미 조회한 지정 설비의 라인 관계를 정확한 키로 읽습니다. */
+    Optional<LineFacts> readLine(long lineKey);
+
+    record LineFacts(String lineCode, String lineName, boolean active) {}
+
     List<ModelFacts> readModels(String eqpId);
 
     record EquipmentFacts(UiEqp eqp, EqpRuntimeStateView runtimeState, List<Work> works) {

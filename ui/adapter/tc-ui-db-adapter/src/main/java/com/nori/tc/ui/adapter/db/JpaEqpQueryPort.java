@@ -5,7 +5,6 @@ import com.nori.tc.db.core.eqp.store.TcEqpParamVersionStore;
 import com.nori.tc.db.core.eqp.store.TcEqpStateHistStore;
 import com.nori.tc.db.core.eqp.store.TcEqpStateStore;
 import com.nori.tc.db.core.eqp.store.TcEqpStore;
-import com.nori.tc.db.domain.common.eqp.EqpStateType;
 import com.nori.tc.db.domain.eqp.TcEqp;
 import com.nori.tc.db.domain.eqp.TcEqpParam;
 import com.nori.tc.db.domain.eqp.TcEqpParamVersion;
@@ -52,7 +51,6 @@ public class JpaEqpQueryPort implements EqpQueryPort {
     private static final Logger log = LoggerFactory.getLogger(JpaEqpQueryPort.class);
     private static final int PARAM_VERSION_PAGE_LIMIT = 500;
     private static final int PARAM_VERSION_SCAN_MAX_ROWS = 10_000;
-    private static final int CONNECTION_STATE_HISTORY_LIMIT = 100;
     private static final int MODEL_VERSION_SCAN_PAGE_SIZE = 500;
     private static final int MODEL_VERSION_SCAN_MAX_ROWS = 20_000;
     // EDIT 버전은 내부 체크아웃 잠금용이므로 드롭다운 목록에 노출하지 않는다.
@@ -427,12 +425,12 @@ public class JpaEqpQueryPort implements EqpQueryPort {
             final String desiredState = optionalState.map(TcEqpState::desiredState).map(Enum::name).orElse(null);
 
             final String connectionState = eqpStateHistStore
-                    .findAllByEqpKey(eqpKey, com.nori.tc.db.core.common.PageRequest.of(0, CONNECTION_STATE_HISTORY_LIMIT))
+                    // CONN 조건을 DB 조회에 적용하여 무관한 최신 OPER 100건 밖의 관측도 잃지 않습니다.
+                    .findLatestConnStateByEqpKeyIn(List.of(eqpKey))
                     .stream()
-                    .filter(stateHist -> stateHist.stateType() == EqpStateType.CONN)
-                    .map(stateHist -> stateHist.toState() == null ? null : stateHist.toState().trim())
-                    .filter(state -> state != null && !state.isBlank())
                     .findFirst()
+                    // 최신 관측이 비었으면 과거 정상값으로 대체하지 않습니다.
+                    .map(stateHist -> stateHist.toState() == null ? null : stateHist.toState().trim())
                     .orElse(null);
 
             return Optional.of(new EqpRuntimeStateView(controlState, eqpState, connectionState, desiredState));

@@ -28,10 +28,50 @@ class TcAiDbReadAdapterTest {
     private final TcWorkLotStore lots = mock(TcWorkLotStore.class);
     private final ModelCrudPort models = mock(ModelCrudPort.class);
     private final ModelDetailQueryPort details = mock(ModelDetailQueryPort.class);
-    private final TcAiDbReadAdapter adapter = new TcAiDbReadAdapter(eqp, works, lots, models, details);
+    private final com.nori.tc.db.core.line.store.TcLineStore lines = mock(com.nori.tc.db.core.line.store.TcLineStore.class);
+    private final TcAiDbReadAdapter adapter = new TcAiDbReadAdapter(eqp, works, lots, models, details, lines);
     private static final OffsetDateTime TIME = OffsetDateTime.parse("2026-11-23T10:00+09:00");
     private static final UiEqp EQP = new UiEqp(1L, "EQP", 2, null, null, false, null,
             null, 0, 3, null, null, null, true, null, null, null, null);
+
+    @Test void connectionOnlyReadsEquipmentRuntimeAndNeverWorksLotsOrModels() {
+        var state = new EqpQueryPort.EqpRuntimeStateView(null, null, "OFFLINE", null);
+        when(eqp.findRuntimeStateByEqpId("ETC_001")).thenReturn(Optional.of(state));
+        assertEquals(state, adapter.readConnection("ETC_001").orElseThrow());
+        verify(eqp).findRuntimeStateByEqpId("ETC_001");
+        verifyNoMoreInteractions(eqp);
+        verifyNoInteractions(works, lots, models, details, lines);
+    }
+
+    @Test void exactInactiveLineOutsideActiveFiveHundredUsesKeyRead() {
+        when(lines.findByKey(1501)).thenReturn(Optional.of(new com.nori.tc.db.domain.line.TcLine(
+                1501, "LINE_A", "A line", null, false, TIME, TIME)));
+        var fact = adapter.readLine(1501).orElseThrow();
+        assertEquals("LINE_A", fact.lineCode());
+        assertEquals("A line", fact.lineName());
+        assertFalse(fact.active());
+        verify(lines).findByKey(1501);
+        verifyNoMoreInteractions(lines);
+        verifyNoInteractions(eqp, works, lots, models, details);
+    }
+
+    @Test void exactLineMissingAndFailureAreNotInventedNames() {
+        assertTrue(adapter.readLine(1501).isEmpty());
+        var failure = new IllegalStateException("시험 라인 실패");
+        when(lines.findByKey(1501)).thenThrow(failure);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> adapter.readLine(1501)));
+    }
+
+    @Test void deprecatedExactRegisteredVersionDoesNotUseSameNameLatestModel() {
+        when(eqp.findByEqpId("EQP")).thenReturn(Optional.of(EQP));
+        var old = new UiModel(3, 2, "SAME_NAME", null, "v-old", null,
+                com.nori.tc.ui.domain.common.model.UiModelStatus.DEPRECATED, null, null, TIME, TIME, null, null);
+        when(models.findByModelVersionKey(3)).thenReturn(Optional.of(old));
+        when(models.findAll(any())).thenReturn(PagedResponse.of(List.of(model(99)), 0, 100, 1));
+        assertEquals(old, adapter.readModels("EQP").getFirst().model());
+        verify(models).findByModelVersionKey(3);
+        verifyNoMoreInteractions(models);
+    }
 
     @Test
     void allWorkAndLotPagesAreReadAndSortedAscending() {
@@ -181,6 +221,7 @@ class TcAiDbReadAdapterTest {
                 .withBean(EqpQueryPort.class, () -> eqp).withBean(TcWorkStore.class, () -> works)
                 .withBean(TcWorkLotStore.class, () -> lots).withBean(ModelCrudPort.class, () -> models)
                 .withBean(ModelDetailQueryPort.class, () -> details)
+                .withBean(com.nori.tc.db.core.line.store.TcLineStore.class, () -> lines)
                 .run(context -> assertThat(context).hasNotFailed().hasSingleBean(TcAiReadPort.class));
     }
 

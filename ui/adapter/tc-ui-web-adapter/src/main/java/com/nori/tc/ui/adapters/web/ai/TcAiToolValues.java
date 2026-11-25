@@ -24,6 +24,8 @@ import com.nori.tc.ui.core.ai.TcAiRedisFacts.CommLogFact;
 import com.nori.tc.ui.core.ai.TcAiRedisFacts.DlqFact;
 import com.nori.tc.ui.core.ai.TcAiRedisFacts.GatewayEntry;
 import com.nori.tc.ui.core.ai.TcAiReadService.OperationalSnapshot;
+import com.nori.tc.ui.core.ai.TcAiReadService.ConnectionResult;
+import com.nori.tc.ui.core.ai.TcAiReadService.RegistrationLine;
 import com.nori.tc.ui.core.port.db.EqpQueryPort.EqpRuntimeStateView;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -42,6 +44,7 @@ import java.util.Set;
  */
 final class TcAiToolValues {
     static final String SNAPSHOT_TITLE = "설비 운영 스냅샷";
+    static final String CONNECTION_TITLE = "설비 관측 연결 상태";
     static final String MODEL_TITLE = "모델 정의";
     static final String DLQ_TITLE = "DLQ 데드레터 큐 목록 항목";
     static final String COMM_LOG_TITLE = "통신 로그";
@@ -59,6 +62,9 @@ final class TcAiToolValues {
     private static final String RAW_KEY_MAP = "tags";
     private static final Map<String, String> LABELS = Map.ofEntries(
             Map.entry("eqp", "설비"), Map.entry("from", "시작 시각"), Map.entry("to", "종료 시각"),
+            Map.entry("lineStatus", "라인 관계"), Map.entry("lineCode", "라인 코드"),
+            Map.entry("lineName", "라인 이름"), Map.entry("lineActive", "라인 활성 여부"),
+            Map.entry("observationStatus", "연결 관측 확인"),
             Map.entry("source", "출처"), Map.entry("entry", "내용"), Map.entry("row", "내용"),
             Map.entry("detailType", "상세 종류"), Map.entry("occurredAt", "발생 시각"),
             Map.entry("direction", "송수신 방향"), Map.entry("messageName", "메시지 이름"),
@@ -118,9 +124,20 @@ final class TcAiToolValues {
     private TcAiToolValues() {}
 
     static List<AiToolItem> registration(final String eqp, final EqpManagementSnapshot snapshot,
-                                         final Map<String, Object> conditions) {
+                                         final Map<String, Object> conditions,
+                                         final RegistrationLine line) {
         List<AiToolItem> items = new ArrayList<>();
         registrationSection(items, eqp, "설비 등록 정보", conditions, eqp(snapshot.eqp()));
+        Map<String, Object> lineValues = new LinkedHashMap<>();
+        lineValues.put("lineStatus", switch (line.status()) {
+            case RESOLVED -> "조회됨";
+            case UNASSIGNED -> "관계 미지정";
+            case NOT_FOUND -> "지정 라인 행 없음";
+        });
+        lineValues.put("lineCode", line.line() == null ? null : line.line().lineCode());
+        lineValues.put("lineName", line.line() == null ? null : line.line().lineName());
+        lineValues.put("lineActive", line.line() == null ? null : line.line().active());
+        registrationSection(items, eqp + ":line", "등록 라인", conditions, lineValues);
         if (snapshot.model() != null) registrationSection(items, eqp + ":model", "등록 모델", conditions, model(snapshot.model()));
         if (snapshot.hsms() != null) registrationSection(items, eqp + ":hsms", "HSMS 통신 설정", conditions, hsms(snapshot.hsms()));
         if (snapshot.socket() != null) registrationSection(items, eqp + ":socket", "SOCKET 통신 설정", conditions, socket(snapshot.socket()));
@@ -178,7 +195,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> hsms(final UiEqpHsms value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpKey", value.eqpKey());
         values.put("deviceId", value.deviceId());
         values.put("t3Timeout", value.t3Timeout());
         values.put("t5Timeout", value.t5Timeout());
@@ -195,7 +211,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> socket(final UiEqpSocket value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpKey", value.eqpKey());
         values.put("socketProtocolType", value.socketProtocolType());
         values.put("charset", value.charset());
         values.put("heartbeatEnabled", value.heartbeatEnabled());
@@ -211,7 +226,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> plc(final UiEqpPlc value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpKey", value.eqpKey());
         values.put("plcProtocol", value.plcProtocol());
         values.put("transport", value.transport());
         values.put("unitId", value.unitId());
@@ -226,7 +240,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> logPolicy(final UiEqpLogPolicy value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpKey", value.eqpKey());
         values.put("logLevel", enumName(value.logLevel()));
         values.put("logRetentionDays", value.logRetentionDays());
         values.put("logPath", value.logPath());
@@ -236,8 +249,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> parameter(final UiEqpParam value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpParamKey", value.eqpParamKey());
-        values.put("eqpKey", value.eqpKey());
         values.put("paramName", value.paramName());
         values.put("paramVersion", value.paramVersion());
         // 전체 이름만 대조하여 password_timeout 같은 일반 파라미터까지 가리지 않습니다.
@@ -252,8 +263,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> parameterVersion(final UiEqpParamVersion value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpParamVersionKey", value.eqpParamVersionKey());
-        values.put("eqpKey", value.eqpKey());
         values.put("paramVersion", value.paramVersion());
         values.put("versionDescription", value.versionDescription());
         values.put("createdAt", timestamp(value.createdAt()));
@@ -265,8 +274,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> port(final UiEqpPortStatus value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpPortStatusKey", value.eqpPortStatusKey());
-        values.put("eqpKey", value.eqpKey());
         values.put("portId", value.portId());
         values.put("portType", enumName(value.portType()));
         values.put("portState", value.portState());
@@ -279,7 +286,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> gatewayJar(final UiGatewayJar value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("gatewayJarKey", value.gatewayJarKey());
         values.put("jarFileName", value.jarFileName());
         values.put("createdAt", timestamp(value.createdAt()));
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -290,7 +296,6 @@ final class TcAiToolValues {
 
     private static Map<String, Object> businessJar(final UiBusinessJar value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("businessJarKey", value.businessJarKey());
         values.put("jarFileName", value.jarFileName());
         values.put("createdAt", timestamp(value.createdAt()));
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -469,20 +474,16 @@ final class TcAiToolValues {
     }
 
     static Map<String, Object> eqp(final UiEqp value) {
+        // 관리·복구 DTO는 그대로 두고 AI 공개 업무 필드만 명시합니다. text도 이 맵만 사용합니다.
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("eqpKey", value.eqpKey());
         values.put("eqpId", value.eqpId());
-        values.put("lineKey", value.lineKey());
         values.put("commInterface", enumName(value.commInterface()));
         values.put("commMode", value.commMode());
         values.put("isDev", value.isDev());
         values.put("routePartition", value.routePartition());
         values.put("eqpIp", value.eqpIp());
         values.put("eqpPort", value.eqpPort());
-        values.put("modelVersionKey", value.modelVersionKey());
         values.put("appliedParamVersion", value.appliedParamVersion());
-        values.put("gatewayJarKey", value.gatewayJarKey());
-        values.put("businessJarKey", value.businessJarKey());
         values.put("enabled", value.enabled());
         values.put("createdAt", timestamp(value.createdAt()));
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -493,8 +494,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> model(final UiModel value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("modelVersionKey", value.modelVersionKey());
-        values.put("modelKey", value.modelKey());
         values.put("modelName", value.modelName());
         values.put("parentModel", value.parentModel());
         values.put("modelVersion", value.modelVersion());
@@ -511,8 +510,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> parameter(final UiModelParam value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("modelParamKey", value.modelParamKey());
-        values.put("modelVersionKey", value.modelVersionKey());
         values.put("paramName", value.paramName());
         values.put("paramValue", value.paramValue());
         values.put("description", value.description());
@@ -522,8 +519,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> secs(final UiModelSecsMessage value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("secsMsgKey", value.secsMsgKey());
-        values.put("modelVersionKey", value.modelVersionKey());
         values.put("secsMsgName", value.secsMsgName());
         values.put("description", value.description());
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -532,8 +527,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> socket(final UiModelSocketMessage value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("socketMsgKey", value.socketMsgKey());
-        values.put("modelVersionKey", value.modelVersionKey());
         values.put("socketMsgName", value.socketMsgName());
         values.put("description", value.description());
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -542,8 +535,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> mes(final UiModelMesMessage value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("mesMsgKey", value.mesMsgKey());
-        values.put("modelVersionKey", value.modelVersionKey());
         values.put("mesMsgName", value.mesMsgName());
         values.put("description", value.description());
         values.put("updatedAt", timestamp(value.updatedAt()));
@@ -552,8 +543,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> lot(final Lot value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("workLotKey", value.workLotKey());
-        values.put("workKey", value.workKey());
         values.put("carrierId", value.carrierId());
         values.put("lotId", value.lotId());
         values.put("parentLotId", value.parentLotId());
@@ -564,8 +553,6 @@ final class TcAiToolValues {
 
     static Map<String, Object> work(final Work value) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("workKey", value.workKey());
-        values.put("eqpKey", value.eqpKey());
         values.put("workId", value.workId());
         values.put("operatorId", value.operatorId());
         values.put("stepSeq", value.stepSeq());
@@ -595,6 +582,15 @@ final class TcAiToolValues {
         values.put("eqpState", value.eqpState());
         values.put("connectionState", value.connectionState());
         values.put("desiredState", value.desiredState());
+        return values;
+    }
+
+    static Map<String, Object> connection(final String eqpId,
+            final ConnectionResult result) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("eqpId", eqpId);
+        values.put("runtimeState", runtime(result.runtimeState()));
+        values.put("observationStatus", result.missingFields().isEmpty() ? "관측됨" : "확인 불가");
         return values;
     }
 }

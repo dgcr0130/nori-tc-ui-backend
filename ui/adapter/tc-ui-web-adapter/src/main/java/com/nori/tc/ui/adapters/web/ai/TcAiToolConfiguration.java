@@ -15,7 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/** TC의 DB·Redis 읽기 다섯 도구를 공통 처리기 등록 형식으로 연결합니다. */
+/** TC의 DB·Redis 읽기 도구를 공통 처리기 등록 형식으로 연결합니다. */
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "nori.ai.integration.enabled", havingValue = "true")
 public class TcAiToolConfiguration {
@@ -28,6 +28,11 @@ public class TcAiToolConfiguration {
     @Bean
     public AiToolRegistration tcAiOperationalSnapshot() {
         return AiToolRegistration.of("tc.eqp.getOperationalSnapshot", this::snapshot);
+    }
+
+    @Bean
+    public AiToolRegistration tcAiConnectionState() {
+        return AiToolRegistration.of("tc.eqp.getConnectionState", this::connection);
     }
 
     @Bean
@@ -50,12 +55,12 @@ public class TcAiToolConfiguration {
         return AiToolRegistration.of("tc.eqp.readRegistration", call -> registration(call, management));
     }
 
-    private static AiToolResult registration(final AiToolCall call, final EqpManagementService management) {
+    private AiToolResult registration(final AiToolCall call, final EqpManagementService management) {
         if (!validEqp(call) || call.arguments().get("eqp") == null) return invalidInput();
         String eqp = (String) call.arguments().get("eqp");
         var detail = management.getManageDetail(eqp);
         var items = detail.map(snapshot -> TcAiToolValues.registration(eqp, snapshot,
-                TcAiToolValues.conditions(call.arguments()))).orElseGet(List::of);
+                TcAiToolValues.conditions(call.arguments()), reads.readRegistrationLine(snapshot.eqp()))).orElseGet(List::of);
         return result(detail.isPresent() ? AiToolResult.Status.SUCCESS : AiToolResult.Status.EMPTY, items, List.of());
     }
 
@@ -131,6 +136,20 @@ public class TcAiToolConfiguration {
                 : List.of(TcAiToolValues.item(eqp, TcAiToolValues.SNAPSHOT_TITLE,
                         TcAiToolValues.conditions(call.arguments()), TcAiToolValues.snapshot(result.snapshot())));
         return result(AiToolResult.Status.valueOf(result.status().name()), items, result.missingFields());
+    }
+
+    private AiToolResult connection(final AiToolCall call) {
+        if (!validEqp(call) || call.arguments().get("eqp") == null) return invalidInput();
+        if (Thread.currentThread().isInterrupted() || !Instant.now().isBefore(call.deadline())) {
+            return result(AiToolResult.Status.TIMEOUT, List.of(), List.of());
+        }
+        String eqp = (String) call.arguments().get("eqp");
+        var connection = reads.readConnectionState(eqp);
+        var items = connection.runtimeState() == null ? List.<AiToolItem>of()
+                : List.of(TcAiToolValues.item(eqp, TcAiToolValues.CONNECTION_TITLE,
+                        TcAiToolValues.conditions(call.arguments()), TcAiToolValues.connection(eqp, connection)));
+        return beforeDeadline(call, result(AiToolResult.Status.valueOf(connection.status().name()), items,
+                connection.missingFields()));
     }
 
     private AiToolResult models(final AiToolCall call) {

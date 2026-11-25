@@ -1,6 +1,7 @@
 package com.nori.tc.ui.adapter.db;
 
 import com.nori.tc.db.core.common.PageRequest;
+import com.nori.tc.db.core.line.store.TcLineStore;
 import com.nori.tc.db.core.work.store.TcWorkStore;
 import com.nori.tc.db.core.work.store.TcWorkLotStore;
 import com.nori.tc.db.domain.work.TcWork;
@@ -32,14 +33,27 @@ public class TcAiDbReadAdapter implements TcAiReadPort {
     private final TcWorkLotStore lots;
     private final ModelCrudPort models;
     private final ModelDetailQueryPort details;
+    private final TcLineStore lines;
 
     public TcAiDbReadAdapter(final EqpQueryPort equipment, final TcWorkStore works, final TcWorkLotStore lots,
-                             final ModelCrudPort models, final ModelDetailQueryPort details) {
+                             final ModelCrudPort models, final ModelDetailQueryPort details,
+                             final TcLineStore lines) {
         this.equipment = equipment;
         this.works = works;
         this.lots = lots;
         this.models = models;
         this.details = details;
+        this.lines = lines;
+    }
+
+    @Override
+    public Optional<EqpQueryPort.EqpRuntimeStateView> readConnection(final String eqpId) {
+        return equipment.findRuntimeStateByEqpId(eqpId);
+    }
+
+    @Override
+    public Optional<LineFacts> readLine(final long lineKey) {
+        return lines.findByKey(lineKey).map(line -> new LineFacts(line.lineCode(), line.lineName(), line.isActive()));
     }
 
     @Override

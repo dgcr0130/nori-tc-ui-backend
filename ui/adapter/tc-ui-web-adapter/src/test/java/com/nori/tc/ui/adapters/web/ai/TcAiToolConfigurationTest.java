@@ -60,21 +60,20 @@ class TcAiToolConfigurationTest {
         assertNull(item.time());
         var root = tree(item);
         keys(root, "eqp runtimeState activeWorks lotStatus currentLot");
-        keys(root.get("eqp"), "eqpKey eqpId lineKey commInterface commMode isDev routePartition eqpIp eqpPort modelVersionKey appliedParamVersion gatewayJarKey businessJarKey enabled createdAt updatedAt createdBy updatedBy");
+        keys(root.get("eqp"), "eqpId commInterface commMode isDev routePartition eqpIp eqpPort appliedParamVersion enabled createdAt updatedAt createdBy updatedBy");
         assertEquals("SECS", root.at("/eqp/commInterface").asString());
-        assertTrue(root.at("/eqp/eqpKey").isIntegralNumber());
+        assertTrue(root.at("/eqp/eqpPort").isIntegralNumber());
         assertTrue(root.at("/eqp/isDev").isBoolean());
         assertEquals("2026-11-23T01:00:00Z", root.at("/eqp/createdAt").asString());
         assertTrue(root.at("/eqp/commMode").isNull());
         keys(root.get("runtimeState"), "controlState eqpState connectionState desiredState");
         root.get("runtimeState").forEach(value -> assertTrue(value.isNull()));
         var w = root.at("/activeWorks/0");
-        keys(w, "workKey eqpKey workId operatorId stepSeq workState startTime endTime mesMessage createdAt updatedAt lots");
+        keys(w, "workId operatorId stepSeq workState startTime endTime mesMessage createdAt updatedAt lots");
         assertTrue(w.get("stepSeq").isNull());
         assertTrue(w.get("endTime").isNull());
         assertEquals(101, w.get("lots").size());
-        keys(w.at("/lots/0"), "workLotKey workKey carrierId lotId parentLotId chamberId updatedAt");
-        assertEquals(9, w.at("/lots/0/workKey").asLong());
+        keys(w.at("/lots/0"), "carrierId lotId parentLotId chamberId updatedAt");
         assertTrue(root.get("currentLot").isNull());
         var response = assemble(configuration.tcAiOperationalSnapshot().toolId(), result);
         assertTrue(item.text().codePointCount(0, item.text().length()) > 4000);
@@ -96,19 +95,14 @@ class TcAiToolConfigurationTest {
         assertEquals(String.join("\n",
                 "[설비 운영 스냅샷]",
                 "조회 조건 > 설비(eqp): CLN_001",
-                "설비 > 설비 키(eqpKey): 25",
                 "설비 > 설비 ID(eqpId): CLN_001",
-                "설비 > 라인 키(lineKey): 2",
                 "설비 > 통신 방식(commInterface): SECS",
                 "설비 > 통신 모드(commMode): 없음",
                 "설비 > 개발 설비 여부(isDev): false",
                 "설비 > 라우팅 파티션(routePartition): 1",
                 "설비 > 설비 IP(eqpIp): 10.0.0.5",
                 "설비 > 설비 포트(eqpPort): 5000",
-                "설비 > 모델 버전 키(modelVersionKey): 3",
                 "설비 > 적용 파라미터 버전(appliedParamVersion): 없음",
-                "설비 > Gateway JAR 키(gatewayJarKey): 없음",
-                "설비 > Business JAR 키(businessJarKey): 없음",
                 "설비 > 사용 여부(enabled): true",
                 "설비 > 생성 시각(createdAt): 2026-11-23T01:00:00Z",
                 "설비 > 수정 시각(updatedAt): 2026-11-23T01:00:00Z",
@@ -132,10 +126,10 @@ class TcAiToolConfigurationTest {
         when(port.readEquipment("EQP")).thenReturn(Optional.of(new EquipmentFacts(eqp, null, List.of(work))));
         var item = snapshot(Map.of("eqp", "EQP")).items().getFirst();
         assertThat(item.text().lines().toList()).contains(
-                "진행 작업 1: 작업 키 9, 설비 키 1, 작업 ID W1, 작업자 ID 없음, 공정 순번 없음, 작업 상태 start, "
+                "진행 작업 1: 작업 ID W1, 작업자 ID 없음, 공정 순번 없음, 작업 상태 start, "
                         + "시작 시각 2026-11-23T01:00:00Z, 종료 시각 없음, MES 메시지 첫 줄 둘째 줄, "
                         + "생성 시각 2026-11-23T01:00:00Z, 수정 시각 2026-11-23T01:00:00Z",
-                "진행 작업 1 > LOT 1: 작업 LOT 키 5, 작업 키 9, 캐리어 ID 없음, LOT ID LOT1, 상위 LOT ID 없음, 챔버 ID 없음, "
+                "진행 작업 1 > LOT 1: 캐리어 ID 없음, LOT ID LOT1, 상위 LOT ID 없음, 챔버 ID 없음, "
                         + "수정 시각 2026-11-23T01:00:00Z",
                 "LOT 상태(lotStatus): ACTIVE",
                 "현재 LOT > LOT ID(lotId): LOT1");
@@ -215,7 +209,7 @@ class TcAiToolConfigurationTest {
         assertEquals(List.of("3", "3:model-parameter:8", "3:model-parameter:7", "3:secs-message:12", "3:secs-message:11",
                 "3:socket-message:13", "3:mes-message:14"), result.items().stream().map(AiToolItem::ref).toList());
         var basic = tree(result.items().getFirst());
-        keys(basic, "modelVersionKey modelKey modelName parentModel modelVersion commInterface status description maker createdAt updatedAt createdBy updatedBy");
+        keys(basic, "modelName parentModel modelVersion commInterface status description maker createdAt updatedAt createdBy updatedBy");
         assertEquals("parent-ref", basic.get("parentModel").asString());
         assertEquals("SOCKET", basic.get("commInterface").asString());
         assertEquals("OPERATE", basic.get("status").asString());
@@ -226,8 +220,6 @@ class TcAiToolConfigurationTest {
                 "[모델 파라미터]",
                 "조회 조건 > 설비(eqp): EQP",
                 "상세 종류(detailType): model-parameter",
-                "내용 > 모델 파라미터 키(modelParamKey): 8",
-                "내용 > 모델 버전 키(modelVersionKey): 3",
                 "내용 > 파라미터 이름(paramName): P8",
                 "내용 > 파라미터 값(paramValue): 없음",
                 "내용 > 설명(description): 없음",
@@ -236,12 +228,12 @@ class TcAiToolConfigurationTest {
                 List.of(0, 3, 5, 6).stream().map(i -> result.items().get(i).text().lines().findFirst().orElseThrow()).toList());
         assertEquals("조회 조건 > 설비(eqp): EQP", result.items().getFirst().text().lines().skip(1).findFirst().orElseThrow());
         keys(tree(result.items().get(1)), "detailType row");
-        keys(tree(result.items().get(1)).get("row"), "modelParamKey modelVersionKey paramName paramValue description updatedAt");
-        keys(tree(result.items().get(3)).get("row"), "secsMsgKey modelVersionKey secsMsgName description updatedAt");
-        keys(tree(result.items().get(5)).get("row"), "socketMsgKey modelVersionKey socketMsgName description updatedAt");
-        keys(tree(result.items().get(6)).get("row"), "mesMsgKey modelVersionKey mesMsgName description updatedAt");
+        keys(tree(result.items().get(1)).get("row"), "paramName paramValue description updatedAt");
+        keys(tree(result.items().get(3)).get("row"), "secsMsgName description updatedAt");
+        keys(tree(result.items().get(5)).get("row"), "socketMsgName description updatedAt");
+        keys(tree(result.items().get(6)).get("row"), "mesMsgName description updatedAt");
         for (var item : result.items().subList(1, result.items().size())) {
-            assertEquals(3, tree(item).at("/row/modelVersionKey").asLong());
+            assertTrue(tree(item).at("/row/modelVersionKey").isMissingNode());
             assertTrue(tree(item).at("/row/description").isNull());
         }
         assertEquals(7, envelope(result).at("/data/items").size());
@@ -363,7 +355,7 @@ class TcAiToolConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed().hasSingleBean(AiRequestIdentityResolver.class);
                     assertThat(context.getBeansOfType(AiToolRegistration.class).values().stream().map(AiToolRegistration::toolId))
-                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.readRegistration",
+                            .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.getConnectionState", "tc.eqp.readRegistration",
                                     "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
                 });
     }
@@ -377,11 +369,11 @@ class TcAiToolConfigurationTest {
         assertFalse(result.items().isEmpty());
         assertTrue(result.missingFields().isEmpty());
         Map.ofEntries(
-                Map.entry("eqpKey", 25L), Map.entry("eqpId", "PHOTO_001"), Map.entry("lineKey", 2L),
+                Map.entry("eqpId", "PHOTO_001"),
                 Map.entry("commInterface", "SECS"), Map.entry("commMode", "ACTIVE"), Map.entry("isDev", false),
                 Map.entry("routePartition", 1), Map.entry("eqpIp", "10.0.0.25"), Map.entry("eqpPort", 5000),
-                Map.entry("modelVersionKey", 3L), Map.entry("appliedParamVersion", "26.11.24.0001"),
-                Map.entry("gatewayJarKey", 51L), Map.entry("businessJarKey", 52L), Map.entry("enabled", true),
+                Map.entry("appliedParamVersion", "26.11.24.0001"),
+                Map.entry("enabled", true),
                 Map.entry("modelName", "PHOTO_MODEL"), Map.entry("modelVersion", "v3"),
                 Map.entry("deviceId", 101), Map.entry("t3Timeout", 45), Map.entry("t5Timeout", 10),
                 Map.entry("t6Timeout", 5), Map.entry("t7Timeout", 10), Map.entry("t8Timeout", 5),
@@ -394,8 +386,8 @@ class TcAiToolConfigurationTest {
                 Map.entry("pollTimeoutMs", 1500), Map.entry("reconnectMaxRetries", 4),
                 Map.entry("enabledPollGroups", List.of("READ_STATUS")), Map.entry("version", 6L),
                 Map.entry("logLevel", "DEBUG"), Map.entry("logRetentionDays", 14), Map.entry("logPath", "/logs/photo"),
-                Map.entry("eqpParamKey", 81L), Map.entry("paramName", "GAS_FLOW"), Map.entry("paramValue", "125 sccm"),
-                Map.entry("paramVersion", "26.11.24.0001"), Map.entry("eqpParamVersionKey", 91L),
+                Map.entry("paramName", "GAS_FLOW"), Map.entry("paramValue", "125 sccm"),
+                Map.entry("paramVersion", "26.11.24.0001"),
                 Map.entry("versionDescription", "등록 버전 설명"), Map.entry("portId", "LP01"),
                 Map.entry("portType", "LOAD_PORT"), Map.entry("jarFileName", "photo-gateway.jar"))
                 .forEach((field, value) -> assertRegistrationValue(result, field, value));
@@ -406,7 +398,8 @@ class TcAiToolConfigurationTest {
         assertRegistrationEnvelopeKeepsEveryItem(result);
         verify(management).getManageDetail("PHOTO_001");
         verifyNoMoreInteractions(management);
-        verifyNoInteractions(port);
+        verify(port, atLeastOnce()).readLine(2);
+        verifyNoMoreInteractions(port);
     }
 
     @Test
@@ -421,7 +414,8 @@ class TcAiToolConfigurationTest {
         assertRegistrationValue(result, "eqpId", "PHOTO_001");
         assertRegistrationEnvelopeKeepsEveryItem(result);
         verify(management).getManageDetail("PHOTO_001");
-        verifyNoInteractions(port);
+        verify(port, atLeastOnce()).readLine(2);
+        verifyNoMoreInteractions(port);
     }
 
     @Test
@@ -435,7 +429,8 @@ class TcAiToolConfigurationTest {
             assertFalse(registrationText(result).contains("(" + field + ")"), field);
         }
         assertThat(registrationText(result)).doesNotContain("RUNTIME_ONLY_MARKER", "CONNECTION_ONLY_MARKER");
-        verifyNoInteractions(port);
+        verify(port, atLeastOnce()).readLine(2);
+        verifyNoMoreInteractions(port);
     }
 
     @Test
@@ -479,7 +474,8 @@ class TcAiToolConfigurationTest {
             assertRegistrationValue(result, "eqpId", eqp);
             verify(management).getManageDetail(eqp);
         }
-        verifyNoInteractions(port);
+        verify(port, atLeastOnce()).readLine(2);
+        verifyNoMoreInteractions(port);
     }
 
     @Test
@@ -513,8 +509,8 @@ class TcAiToolConfigurationTest {
         assertEquals(AiToolResult.Status.SUCCESS, result.status());
         assertTrue(registrationText(result).codePointCount(0, registrationText(result).length()) > 4000);
         assertTrue(result.items().size() > 1);
-        assertThat(registrationValues(result, "eqpParamKey").stream().map(JsonNode::asLong).toList())
-                .containsExactlyInAnyOrderElementsOf(parameters.stream().map(UiEqpParam::eqpParamKey).toList());
+        assertThat(registrationValues(result, "paramName").stream().map(JsonNode::asString).toList())
+                .containsExactlyInAnyOrderElementsOf(parameters.stream().map(UiEqpParam::paramName).toList());
         for (var row : parameters) {
             assertRegistrationValue(result, "paramName", row.paramName());
             assertRegistrationValue(result, "paramValue", row.paramValue());
@@ -554,9 +550,6 @@ class TcAiToolConfigurationTest {
             assertThat(output).doesNotContain(secret, Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
         }
         assertTrue(registrationValues(result, "jarFile").isEmpty());
-        assertRegistrationValue(result, "eqpKey", 25L);
-        assertRegistrationValue(result, "gatewayJarKey", 51L);
-        assertRegistrationValue(result, "businessJarKey", 52L);
         assertRegistrationValue(result, "paramValue", "125 sccm");
         assertThat(registrationText(result)).contains("125 sccm", "photo-gateway.jar", "photo-business.jar");
         String envelope = new String(assemble(REGISTRATION_TOOL, result).body(), StandardCharsets.UTF_8);

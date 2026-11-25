@@ -185,7 +185,7 @@ class TcAiIntegrationTest {
     }
 
     @Test
-    void fileSettingsAndFiveHandlersMatchAndSignedHttpRoundTripUsesCurrentIdentity() throws Exception {
+    void fileSettingsAndSixHandlersMatchAndSignedHttpRoundTripUsesCurrentIdentity() throws Exception {
         var properties = context.getBean(AiIntegrationProperties.class);
         assertTrue(properties.enabled());
         assertEquals(AiIntegrationProperties.BrowserCredential.COOKIE, properties.browserCredential());
@@ -194,7 +194,7 @@ class TcAiIntegrationTest {
         assertEquals(1, context.getBeansOfType(AiRequestIdentityResolver.class).size());
         var registered = context.getBeansOfType(AiToolRegistration.class).values().stream().map(AiToolRegistration::toolId).sorted().toList();
         assertEquals(properties.tools().stream().map(AiIntegrationProperties.Tool::id).sorted().toList(), registered);
-        assertEquals(5, registered.size());
+        assertEquals(6, registered.size());
         var response = question();
         assertEquals(202, response.statusCode()); assertNull(gatewayFailure.get());
         assertEquals(5, results.size());
@@ -258,6 +258,36 @@ class TcAiIntegrationTest {
         when(sessions.findValidByToken(sessionToken)).thenReturn(Optional.empty());
         assertEquals(401, send("GET", "/api/ai/session", sessionCookie(), null).statusCode());
         assertEquals(200, internal(old, "tc.dlq.list", Map.of()).statusCode());
+    }
+
+    @Test
+    void connectionRequiresEqpReadAndDenialOrSourceFailureNeverReadsOperationalSnapshot() throws Exception {
+        var tool = context.getBean(AiIntegrationProperties.class).tools().stream()
+                .filter(value -> value.id().equals("tc.eqp.getConnectionState")).findFirst().orElseThrow();
+        assertEquals(List.of("EQP_READ"), tool.requiredPermissions());
+        currentPermissions.set(Set.of("EQP_READ"));
+        assertEquals(202, question().statusCode());
+        var claims = assertions.getLast();
+        clearInvocations(db, management);
+        when(db.readConnection("ETC_001")).thenReturn(Optional.of(new EqpQueryPort.EqpRuntimeStateView(null, null, "OFFLINE", null)));
+        var response = internal(claims, tool.id(), Map.of("eqp", "ETC_001"));
+        assertEquals(200, response.statusCode());
+        var body = JSON.readTree(response.body());
+        assertEquals("SUCCESS", body.get("status").asString());
+        assertEquals(0, body.get("missingFields").size());
+        verify(db).readConnection("ETC_001");
+        verifyNoMoreInteractions(db);
+        verifyNoInteractions(management);
+        // 같은 EQP_READ로 MODEL_READ 전용 모델 전수조회를 허용하지 않습니다.
+        assertEquals(403, internal(claims, "tc.model.read", Map.of()).statusCode());
+        verify(db, never()).readModels(any());
+        when(db.readConnection("ETC_001")).thenThrow(new IllegalStateException("시험 원천 실패"));
+        assertEquals(503, internal(claims, tool.id(), Map.of("eqp", "ETC_001")).statusCode());
+        currentPermissions.set(Set.of("MODEL_READ"));
+        assertEquals(202, question().statusCode());
+        clearInvocations(db);
+        assertEquals(403, internal(assertions.getLast(), tool.id(), Map.of("eqp", "ETC_001")).statusCode());
+        verifyNoInteractions(db);
     }
 
     @Test

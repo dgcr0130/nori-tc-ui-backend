@@ -116,6 +116,29 @@ public class TcAiReadService {
         return readPort.readModels(eqpId);
     }
 
+    public ConnectionResult readConnectionState(final String eqpId) {
+        var runtime = readPort.readConnection(eqpId);
+        if (runtime.isEmpty()) return new ConnectionResult(Status.EMPTY, null, List.of());
+        String state = runtime.get().connectionState();
+        boolean known = state != null && !state.isBlank() && !"UNKNOWN".equalsIgnoreCase(state.trim());
+        return new ConnectionResult(known ? Status.SUCCESS : Status.PARTIAL, runtime.get(),
+                known ? List.of() : List.of("connectionState"));
+    }
+
+    /** 외부 인자로 라인 키를 받지 않고 이번 지정 설비의 실제 관계만 조회합니다. */
+    public RegistrationLine readRegistrationLine(final UiEqp eqp) {
+        if (eqp.lineKey() <= 0) return new RegistrationLine(LineStatus.UNASSIGNED, null);
+        return readPort.readLine(eqp.lineKey())
+                .map(line -> new RegistrationLine(LineStatus.RESOLVED, line))
+                .orElseGet(() -> new RegistrationLine(LineStatus.NOT_FOUND, null));
+    }
+
+    public enum LineStatus { RESOLVED, UNASSIGNED, NOT_FOUND }
+    public record RegistrationLine(LineStatus status, TcAiReadPort.LineFacts line) {}
+    public record ConnectionResult(Status status, EqpRuntimeStateView runtimeState, List<String> missingFields) {
+        public ConnectionResult { missingFields = List.copyOf(missingFields); }
+    }
+
     private SnapshotResult snapshot(final EquipmentFacts facts) {
         List<Work> activeWorks = facts.works().stream()
                 .filter(work -> "start".equals(work.workState()) && work.endTime() == null)

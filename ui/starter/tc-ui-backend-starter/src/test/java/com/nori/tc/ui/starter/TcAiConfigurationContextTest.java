@@ -48,9 +48,9 @@ class TcAiConfigurationContextTest {
             assertThat(context).hasNotFailed().hasSingleBean(TcAiReadService.class).hasSingleBean(TcAiReadPort.class);
             assertThat(context).hasSingleBean(TcAiReadPort.RedisReads.class);
             assertThat(context.getBeansOfType(resolver)).hasSize(1);
-            assertThat(context.getBeansOfType(registration)).hasSize(5);
+            assertThat(context.getBeansOfType(registration)).hasSize(6);
             assertThat(context.getBeansOfType(registration).values()).extracting(AiToolRegistration::toolId)
-                    .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.readRegistration",
+                    .containsExactlyInAnyOrder("tc.eqp.getOperationalSnapshot", "tc.eqp.getConnectionState", "tc.eqp.readRegistration",
                             "tc.model.read", "tc.dlq.list", "tc.commLogs.search");
         });
     }

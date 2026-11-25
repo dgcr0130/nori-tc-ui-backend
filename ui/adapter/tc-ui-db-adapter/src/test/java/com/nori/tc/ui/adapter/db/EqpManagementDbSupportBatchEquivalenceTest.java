@@ -62,6 +62,23 @@ import static org.mockito.Mockito.when;
  * {@code GET /api/eqp/manage-batch} 응답이 단건 {@code GET /api/eqp/&#123;eqpId&#125;/manage} 와 조용히 갈린다.</p>
  */
 class EqpManagementDbSupportBatchEquivalenceTest {
+    @Test
+    void registrationKeepsActualDeprecatedVersionInsteadOfSameNameLatestAndRetainsManagementKeys() {
+        when(eqpStore.findByEqpId("ETC_001")).thenReturn(Optional.of(eqp(181, "ETC_001", ProtocolType.SECS, 77)));
+        var old = new TcModel(77, 7001, "SAME_NAME", null, "v-old", ProtocolType.SECS, ModelStatus.DEPRECATED,
+                null, null, TS, TS, null, null);
+        var latest = new TcModel(99, 7001, "SAME_NAME", null, "v-new", ProtocolType.SECS, ModelStatus.OPERATE,
+                null, null, TS, TS, null, null);
+        when(modelStore.findByModelVersionKey(77)).thenReturn(Optional.of(old));
+        when(modelStore.findAll(any())).thenReturn(List.of(old, latest));
+        var snapshot = dbSupport.loadSnapshotByEqpId("ETC_001").orElseThrow();
+        assertEquals(181L, snapshot.eqp().eqpKey());
+        assertEquals(77, snapshot.eqp().modelVersionKey());
+        assertEquals("v-old", snapshot.model().modelVersion());
+        assertEquals(com.nori.tc.ui.domain.common.model.UiModelStatus.DEPRECATED, snapshot.model().status());
+        org.mockito.Mockito.verify(modelStore).findByModelVersionKey(77);
+        org.mockito.Mockito.verify(modelStore, org.mockito.Mockito.never()).findAll(any());
+    }
 
     private static final OffsetDateTime TS = OffsetDateTime.parse("2026-07-06T10:15:30+09:00");
 
